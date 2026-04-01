@@ -147,8 +147,10 @@ return { from: { r: 1, c: 5 }, to: { r: 0, c: 5 }, promotion: "N" };
 ### Elimination
 
 - Checkmated or stalemated players are eliminated
+- **Lone king** — if a player has only their king left (no other pieces), they are eliminated for "no material"
+- **Repetition** — if a bot plays the exact same from→to move 5 times in a game, they are eliminated
 - Their pieces become "dead" — remain on board but are passable (sliding pieces go through them)
-- Game ends when 1 player remains (last standing) or after 200 moves (highest score wins)
+- Game ends when 1 player remains (last standing) or after 500 moves (highest score wins)
 
 ## Other API Endpoints
 
