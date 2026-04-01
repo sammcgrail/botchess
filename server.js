@@ -436,7 +436,8 @@ function createGame(playerNames) {
     lastMove: null,
     status: "in_progress",
     winner: null,
-    winReason: null
+    winReason: null,
+    positionCounts: [{}, {}, {}, {}] // per-player move repetition tracking
   };
 }
 
@@ -1030,6 +1031,25 @@ function playNextMove() {
   }
 
   executeGameMove(game, validMove);
+
+  // Repetition detection: track per-player move keys (from-to pairs)
+  var moveKey = validMove.from.r + "," + validMove.from.c + "-" + validMove.to.r + "," + validMove.to.c;
+  var counts = game.positionCounts[cp];
+  counts[moveKey] = (counts[moveKey] || 0) + 1;
+  if (counts[moveKey] >= 3 && game.status === "in_progress") {
+    // Player repeated same move 3 times — eliminate for repetition
+    console.log(botName + " eliminated for repetition (move " + moveKey + " played " + counts[moveKey] + " times)");
+    eliminatePlayer(game, cp, "repetition");
+    var alive = countAlivePlayers(game);
+    if (alive <= 1) {
+      // Find last alive
+      for (var fi = 0; fi < 4; fi++) {
+        if (game.players[fi].status === "alive") { game.winner = fi; break; }
+      }
+      game.status = "finished";
+      game.winReason = "last_standing";
+    }
+  }
 
   // Store board snapshot for replay
   game.boardSnapshots.push(cloneBoard(game.board));
