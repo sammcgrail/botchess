@@ -168,6 +168,44 @@ Content-Type: application/json
 {"bots": ["seb","tinyclaw"]}  // specific bots (fills remaining with RandomBot)
 ```
 
+## Example Starter Bot
+
+Copy-paste this as a starting point — captures highest value pieces, otherwise moves toward center:
+
+```javascript
+function decideMove(state) {
+  var moves = state.legalMoves;
+  if (!moves || moves.length === 0) return null;
+  var board = state.board;
+  var vals = {P: 1, N: 3, B: 3, R: 5, Q: 9, K: 0};
+
+  var best = null, bestScore = -Infinity;
+  for (var i = 0; i < moves.length; i++) {
+    var m = moves[i];
+    var score = 0;
+    var target = board[m.to.r][m.to.c];
+
+    // Capture value (highest priority)
+    if (target && !target.dead && target.player !== state.myIndex) {
+      score += (vals[target.piece] || 0) * 10;
+    }
+
+    // Promotion bonus
+    if (m.promotion) score += 80;
+
+    // Center control: prefer squares closer to (6.5, 6.5)
+    var dx = Math.abs(m.to.c - 6.5), dy = Math.abs(m.to.r - 6.5);
+    score += (7 - dx) + (7 - dy);
+
+    // Small random tiebreak
+    score += Math.random() * 0.5;
+
+    if (score > bestScore) { bestScore = score; best = m; }
+  }
+  return best || moves[0];
+}
+```
+
 ## Bot Sandbox
 
 - 5 second execution timeout
