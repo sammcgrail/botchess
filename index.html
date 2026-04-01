@@ -1,0 +1,1199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<base href="/">
+<title>BotChess</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='4' fill='%231a1816'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-size='20'%3E%E2%99%9A%3C/text%3E%3C/svg%3E">
+<style>
+* {
+  margin: 0; padding: 0; box-sizing: border-box;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+body {
+  font-family: 'Georgia', serif;
+  background: #1a1816;
+  color: #e8e0d4;
+  min-height: 100vh;
+  touch-action: manipulation;
+}
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 16px;
+}
+h1 {
+  text-align: center;
+  font-size: 2em;
+  margin-bottom: 4px;
+  letter-spacing: 2px;
+}
+.subtitle {
+  text-align: center;
+  font-size: 0.9em;
+  color: #9a9080;
+  margin-bottom: 16px;
+}
+.status-bar {
+  text-align: center;
+  padding: 10px;
+  background: #2a2622;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-weight: bold;
+  font-size: 1.1em;
+}
+.status-bar.connected { color: #60c060; }
+.status-bar.disconnected { color: #e06060; }
+.status-bar.idle { color: #d4a040; }
+
+.main-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr 300px;
+  gap: 16px;
+  align-items: start;
+}
+.main-layout .col-left, .main-layout .col-right {
+  position: sticky;
+  top: 16px;
+}
+
+/* Panels */
+.panel {
+  background: #2a2622;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  border: 1px solid #3a3530;
+}
+.panel h2 {
+  font-size: 1em;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #3a3530;
+  padding-bottom: 4px;
+  color: #d4a040;
+}
+
+/* Player Cards */
+.player-card {
+  padding: 8px;
+  margin-bottom: 6px;
+  background: #1a1816;
+  border-radius: 6px;
+  border-left: 4px solid #666;
+  transition: background 0.3s, border-color 0.3s;
+}
+.player-card.active-turn {
+  background: #2e2a26;
+  box-shadow: 0 0 8px rgba(212, 160, 64, 0.3);
+}
+.player-card .pc-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.player-card .pc-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.player-card .pc-name {
+  font-weight: bold;
+  font-size: 0.95em;
+  flex: 1;
+}
+.player-card .pc-status {
+  font-size: 0.75em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #3a3530;
+}
+.player-card .pc-status.alive { color: #60c060; }
+.player-card .pc-status.dead { color: #e06060; }
+.player-card .pc-status.checkmate { color: #e07070; background: #3a2020; }
+.player-card .pc-stats {
+  font-size: 0.82em;
+  color: #a09888;
+  margin-top: 4px;
+}
+.player-card .pc-captured {
+  font-size: 0.85em;
+  margin-top: 4px;
+  letter-spacing: 1px;
+}
+
+/* Board */
+.board-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.board-grid {
+  display: inline-grid;
+  grid-template-columns: repeat(14, 36px);
+  gap: 1px;
+  background: #3a3530;
+  padding: 2px;
+  border-radius: 6px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+}
+.sq {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  position: relative;
+  transition: background 0.2s;
+  border-radius: 2px;
+  line-height: 1;
+}
+.sq.dead {
+  visibility: hidden;
+}
+.sq.light { background: #f0d9b5; }
+.sq.dark { background: #b58863; }
+.sq.last-move {
+  box-shadow: inset 0 0 0 2px rgba(212, 160, 64, 0.7);
+}
+.sq.in-check {
+  box-shadow: inset 0 0 12px rgba(224, 64, 64, 0.8), inset 0 0 4px rgba(224, 64, 64, 0.6);
+}
+.sq .piece {
+  z-index: 2;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  pointer-events: none;
+}
+.piece.red { color: #e07070; }
+.piece.blue { color: #70a0e0; }
+.piece.yellow { color: #d0c040; }
+.piece.green { color: #70c070; }
+.piece.dead-piece { color: #666; }
+
+/* Move notation */
+.move-display {
+  text-align: center;
+  padding: 8px;
+  background: #2a2622;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-size: 0.95em;
+  color: #d4a040;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Replay Controls */
+.replay-controls {
+  background: #2a2622;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  display: none;
+  border: 1px solid #3a3530;
+}
+.replay-controls h2 {
+  font-size: 1em;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #3a3530;
+  padding-bottom: 4px;
+  color: #d4a040;
+}
+.replay-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.replay-bar button {
+  font-family: 'Georgia', serif;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid #3a3530;
+  background: #1a1816;
+  color: #e8e0d4;
+  cursor: pointer;
+  font-size: 0.85em;
+  transition: background 0.2s, color 0.2s;
+}
+.replay-bar button:hover { background: #3a3530; }
+.replay-bar button.active { background: #d4a040; color: #1a1816; }
+.replay-bar button:active { transform: scale(0.95); }
+.replay-bar select {
+  font-family: 'Georgia', serif;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid #3a3530;
+  background: #1a1816;
+  color: #e8e0d4;
+  font-size: 0.85em;
+}
+.replay-bar select:focus { border-color: #d4a040; outline: none; }
+.replay-turn-label {
+  color: #d4a040;
+  font-weight: bold;
+  font-size: 0.9em;
+  margin-left: auto;
+}
+.replay-progress {
+  width: 100%;
+  height: 6px;
+  background: #3a3530;
+  border-radius: 2px;
+  overflow: hidden;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: background 0.2s;
+}
+.replay-progress:hover { background: #4a4540; }
+.replay-progress .fill {
+  height: 100%;
+  background: #d4a040;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+.replay-move-info {
+  margin-top: 8px;
+  font-size: 0.82em;
+  color: #9a9080;
+}
+
+/* Leaderboard */
+.lb-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: 0.88em;
+  border-bottom: 1px solid #3a3530;
+}
+.lb-row:last-child { border-bottom: none; }
+.lb-row .rank { color: #d4a040; font-weight: bold; min-width: 24px; }
+.lb-row .lb-name { flex: 1; margin-left: 6px; }
+.lb-row .lb-stat { color: #a09888; font-size: 0.85em; min-width: 40px; text-align: right; }
+.lb-header {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 0 4px;
+  font-size: 0.75em;
+  color: #6a6050;
+  border-bottom: 1px solid #3a3530;
+  margin-bottom: 4px;
+}
+
+/* Bot Management */
+.bot-upload {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.bot-upload input, .bot-upload textarea, .bot-upload button {
+  font-family: 'Georgia', serif;
+  font-size: 0.9em;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid #4a4540;
+}
+.bot-upload input, .bot-upload textarea {
+  background: #1a1816;
+  color: #e8e0d4;
+}
+.bot-upload textarea {
+  min-height: 100px;
+  resize: vertical;
+  font-family: monospace;
+  font-size: 0.82em;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.bot-upload button {
+  background: #d4a040;
+  color: #1a1816;
+  cursor: pointer;
+  font-weight: bold;
+  border: none;
+}
+.bot-upload button:hover { background: #e0b050; }
+.bot-upload .msg {
+  font-size: 0.82em;
+  color: #9a9080;
+}
+
+.bot-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  background: #1a1816;
+  border-radius: 6px;
+  font-size: 0.88em;
+}
+.bot-list-item .bot-name { font-weight: bold; }
+.bot-list-item button {
+  font-family: 'Georgia', serif;
+  font-size: 0.78em;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid #3a3530;
+  background: #2a2622;
+  color: #e8e0d4;
+  cursor: pointer;
+}
+.bot-list-item button:hover { background: #3a3530; }
+
+.autobattle-btn {
+  font-family: 'Georgia', serif;
+  font-size: 0.9em;
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  background: #407040;
+  color: #fff;
+  cursor: pointer;
+  font-weight: bold;
+  width: 100%;
+  margin-top: 8px;
+}
+.autobattle-btn:hover { background: #508050; }
+.autobattle-btn:disabled { background: #555; cursor: not-allowed; }
+
+#autobattleMsg {
+  font-size: 0.82em;
+  color: #60c060;
+  margin-top: 6px;
+  display: none;
+}
+
+/* Past Games / History */
+.past-games-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+.past-game-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px;
+  margin-bottom: 4px;
+  background: #1a1816;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  font-size: 0.85em;
+  border: 1px solid transparent;
+}
+.past-game-row:hover { background: #2e2a26; border-color: #3a3530; }
+.past-game-row.active { border-left: 3px solid #d4a040; background: #2e2a26; }
+.past-game-winner { font-weight: bold; }
+.past-game-meta { color: #9a9080; font-size: 0.8em; }
+.no-games { color: #9a9080; font-style: italic; font-size: 0.85em; }
+
+/* Bot code viewer */
+.code-viewer {
+  display: none;
+  background: #2a2622;
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 8px;
+  border: 1px solid #3a3530;
+}
+.code-viewer h2 {
+  font-size: 1em;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #3a3530;
+  padding-bottom: 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #d4a040;
+}
+.code-viewer pre {
+  background: #1a1816;
+  padding: 10px;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-family: monospace;
+  font-size: 0.78em;
+  color: #c0b8a8;
+  max-height: 400px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.code-viewer .close-btn {
+  font-family: 'Georgia', serif;
+  font-size: 0.8em;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid #3a3530;
+  background: #1a1816;
+  color: #e8e0d4;
+  cursor: pointer;
+}
+
+/* Animations */
+@keyframes checkPulse {
+  0%   { box-shadow: inset 0 0 8px rgba(224, 64, 64, 0.4); }
+  50%  { box-shadow: inset 0 0 16px rgba(224, 64, 64, 0.9), inset 0 0 30px rgba(224, 64, 64, 0.4); }
+  100% { box-shadow: inset 0 0 8px rgba(224, 64, 64, 0.4); }
+}
+.sq.in-check { animation: checkPulse 1.2s ease-in-out infinite; }
+
+@keyframes movePulse {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+.sq.move-pulse { animation: movePulse 0.35s ease-out; }
+
+/* Mobile */
+@media (max-width: 960px) {
+  .main-layout { grid-template-columns: 1fr; }
+  .main-layout .col-left, .main-layout .col-right { position: static; }
+  .main-layout .col-left { order: 2; }
+  .main-layout .col-center { order: 1; }
+  .main-layout .col-right { order: 3; }
+  .board-grid {
+    grid-template-columns: repeat(14, 24px);
+  }
+  .sq { width: 24px; height: 24px; font-size: 15px; }
+  h1 { font-size: 1.5em; }
+  .container { padding: 8px; }
+  .player-card { padding: 6px; }
+  .player-card .pc-name { font-size: 0.85em; }
+  .player-card .pc-stats { font-size: 0.75em; }
+  .past-games-list { max-height: 250px; }
+  .replay-bar button { padding: 8px 14px; font-size: 1em; min-width: 40px; }
+  .replay-bar select { padding: 6px 8px; font-size: 0.9em; }
+  .replay-turn-label { font-size: 0.85em; width: 100%; text-align: center; margin-top: 4px; }
+  .replay-progress { height: 8px; margin-top: 4px; }
+  .replay-move-info { font-size: 0.78em; margin-top: 6px; }
+  .past-game-row { padding: 8px; font-size: 0.8em; flex-wrap: wrap; gap: 4px; }
+  .status-bar { font-size: 0.95em; padding: 8px; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>BOTCHESS</h1>
+  <div class="subtitle">4-player chess bot battler</div>
+
+  <div class="status-bar idle" id="statusBar">Connecting...</div>
+
+  <div class="main-layout">
+    <!-- Left Column: Player Cards -->
+    <div class="col-left">
+      <div class="panel">
+        <h2>Players</h2>
+        <div id="playerCards"><em class="no-games">No players yet</em></div>
+      </div>
+    </div>
+
+    <!-- Center: Board + Replay -->
+    <div class="col-center">
+      <div class="move-display" id="moveDisplay">Waiting for game...</div>
+      <div class="board-wrapper">
+        <div class="board-grid" id="boardGrid"></div>
+      </div>
+      <div class="replay-controls" id="replayControls">
+        <h2>Replay &mdash; <span id="replayTitle">Game</span></h2>
+        <div class="replay-bar">
+          <button onclick="replayStep(-1)" title="Previous move">&#9664;&#9664;</button>
+          <button id="replayPlayBtn" onclick="replayToggle()" title="Play/Pause">&#9654;</button>
+          <button onclick="replayStep(1)" title="Next move">&#9654;&#9654;</button>
+          <select id="replaySpeed" onchange="replaySetSpeed(this.value)">
+            <option value="1000">1x</option>
+            <option value="500" selected>2x</option>
+            <option value="200">5x</option>
+            <option value="100">10x</option>
+          </select>
+          <span class="replay-turn-label">Move <span id="replayMoveNum">0</span>/<span id="replayMoveMax">0</span></span>
+        </div>
+        <div class="replay-progress" onclick="replaySeek(event)">
+          <div class="fill" id="replayProgressFill"></div>
+        </div>
+        <div class="replay-move-info" id="replayMoveInfo"></div>
+      </div>
+    </div>
+
+    <!-- Right Column: Leaderboard, Bots, History -->
+    <div class="col-right">
+      <div class="panel" id="leaderboardPanel">
+        <h2>Leaderboard</h2>
+        <div class="lb-header">
+          <span style="min-width:24px">#</span>
+          <span style="flex:1;margin-left:6px">Name</span>
+          <span style="min-width:40px;text-align:right">W</span>
+          <span style="min-width:40px;text-align:right">Pts</span>
+          <span style="min-width:40px;text-align:right">GP</span>
+        </div>
+        <div id="lbList"><em class="no-games">No games played yet</em></div>
+      </div>
+
+      <div class="panel" id="botsPanel">
+        <h2>Bots</h2>
+        <div id="botsList"><span class="no-games">Loading bots...</span></div>
+        <button class="autobattle-btn" id="autobattleBtn" onclick="runAutobattle()">Run Autobattle</button>
+        <div id="autobattleMsg"></div>
+      </div>
+
+      <div class="panel" id="botUploadPanel">
+        <h2>Upload Bot</h2>
+        <div class="bot-upload">
+          <input type="text" id="botName" placeholder="Bot name">
+          <input type="password" id="botPassword" placeholder="Password">
+          <textarea id="botCode" placeholder="Paste bot code here..."></textarea>
+          <button onclick="uploadBot()">Upload Bot</button>
+          <div class="msg" id="uploadMsg"></div>
+        </div>
+      </div>
+
+      <div class="panel" id="historyPanel">
+        <h2>Game History</h2>
+        <div class="past-games-list" id="pastGamesList">
+          <span class="no-games">No completed games yet</span>
+        </div>
+      </div>
+
+      <div class="code-viewer" id="codeViewer">
+        <h2>
+          <span id="codeViewerTitle">Bot Code</span>
+          <button class="close-btn" onclick="closeCodeViewer()">Close</button>
+        </h2>
+        <pre id="codeViewerContent"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+var PLAYER_COLORS = {
+  red: "#e07070",
+  blue: "#70a0e0",
+  yellow: "#d0c040",
+  green: "#70c070"
+};
+var PLAYER_ORDER = ["red", "blue", "yellow", "green"];
+var PLAYER_NAMES_DEFAULT = ["Red", "Blue", "Yellow", "Green"];
+var GRID_SIZE = 14;
+var LIGHT_SQ = "#f0d9b5";
+var DARK_SQ = "#b58863";
+var DEAD_COLOR = "#666";
+
+var PIECE_UNICODE = {
+  K: "\u265A",
+  Q: "\u265B",
+  R: "\u265C",
+  B: "\u265D",
+  N: "\u265E",
+  P: "\u265F"
+};
+
+var state = null;
+var ws = null;
+var replayData = null;
+var replayIndex = 0;
+var replayPlaying = false;
+var replayTimer = null;
+var replaySpeed = 500;
+var lastMoveFrom = null;
+var lastMoveTo = null;
+var historyOffset = 0;
+var historyLoading = false;
+var historyDone = false;
+
+function apiBase() {
+  return window.location.pathname.replace(/\/$/, "");
+}
+
+// Dead corners: rows 0-2 x cols 0-2, rows 0-2 x cols 11-13,
+// rows 11-13 x cols 0-2, rows 11-13 x cols 11-13
+function isDead(r, c) {
+  if (r <= 2 && c <= 2) return true;
+  if (r <= 2 && c >= 11) return true;
+  if (r >= 11 && c <= 2) return true;
+  if (r >= 11 && c >= 11) return true;
+  return false;
+}
+
+function initBoard() {
+  var grid = document.getElementById("boardGrid");
+  grid.innerHTML = "";
+  for (var r = 0; r < GRID_SIZE; r++) {
+    for (var c = 0; c < GRID_SIZE; c++) {
+      var sq = document.createElement("div");
+      sq.className = "sq";
+      sq.dataset.r = r;
+      sq.dataset.c = c;
+      if (isDead(r, c)) {
+        sq.classList.add("dead");
+      } else {
+        sq.classList.add((r + c) % 2 === 0 ? "light" : "dark");
+      }
+      grid.appendChild(sq);
+    }
+  }
+}
+
+function renderBoard(board) {
+  if (!board) return;
+  var squares = document.querySelectorAll(".sq");
+  squares.forEach(function(sq) {
+    var r = parseInt(sq.dataset.r);
+    var c = parseInt(sq.dataset.c);
+    if (isDead(r, c)) return;
+
+    // Reset
+    sq.classList.remove("last-move", "in-check", "move-pulse");
+    sq.classList.add((r + c) % 2 === 0 ? "light" : "dark");
+
+    // Clear piece
+    var existing = sq.querySelector(".piece");
+    if (existing) existing.remove();
+
+    var cell = board[r] ? board[r][c] : null;
+    if (cell && cell.type) {
+      var piece = document.createElement("span");
+      piece.className = "piece";
+      piece.textContent = PIECE_UNICODE[cell.type] || "?";
+      if (cell.dead) {
+        piece.classList.add("dead-piece");
+      } else if (cell.player) {
+        piece.classList.add(cell.player);
+      }
+      sq.appendChild(piece);
+
+      // King in check
+      if (cell.type === "K" && cell.inCheck) {
+        sq.classList.add("in-check");
+      }
+    }
+
+    // Last move highlight
+    if (lastMoveFrom && lastMoveFrom.r === r && lastMoveFrom.c === c) {
+      sq.classList.add("last-move");
+    }
+    if (lastMoveTo && lastMoveTo.r === r && lastMoveTo.c === c) {
+      sq.classList.add("last-move");
+      sq.classList.add("move-pulse");
+    }
+  });
+}
+
+function renderPlayerCards(players) {
+  var container = document.getElementById("playerCards");
+  if (!players || players.length === 0) {
+    container.innerHTML = '<em class="no-games">No players yet</em>';
+    return;
+  }
+  var html = "";
+  for (var i = 0; i < players.length; i++) {
+    var p = players[i];
+    var color = PLAYER_COLORS[p.color] || "#666";
+    var isActive = p.isCurrentTurn;
+    var statusClass = p.status === "alive" ? "alive" : (p.status === "checkmate" ? "checkmate" : "dead");
+    html += '<div class="player-card' + (isActive ? ' active-turn' : '') + '" style="border-left-color:' + color + '">';
+    html += '<div class="pc-header">';
+    html += '<div class="pc-swatch" style="background:' + color + '"></div>';
+    html += '<span class="pc-name">' + escHtml(p.name || PLAYER_NAMES_DEFAULT[i]) + '</span>';
+    html += '<span class="pc-status ' + statusClass + '">' + escHtml(p.status || "alive") + '</span>';
+    html += '</div>';
+    html += '<div class="pc-stats">Score: ' + (p.score || 0) + ' | Pieces: ' + (p.piecesLeft || 0) + '</div>';
+    if (p.captured && p.captured.length > 0) {
+      html += '<div class="pc-captured">';
+      for (var j = 0; j < p.captured.length; j++) {
+        html += '<span style="color:' + (PLAYER_COLORS[p.captured[j].color] || DEAD_COLOR) + '">' + (PIECE_UNICODE[p.captured[j].type] || "?") + '</span>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+  container.innerHTML = html;
+}
+
+function renderLeaderboard(data) {
+  var container = document.getElementById("lbList");
+  if (!data || data.length === 0) {
+    container.innerHTML = '<em class="no-games">No games played yet</em>';
+    return;
+  }
+  var html = "";
+  for (var i = 0; i < data.length; i++) {
+    var row = data[i];
+    html += '<div class="lb-row">';
+    html += '<span class="rank">' + (i + 1) + '</span>';
+    html += '<span class="lb-name">' + escHtml(row.name) + '</span>';
+    html += '<span class="lb-stat">' + (row.wins || 0) + '</span>';
+    html += '<span class="lb-stat">' + (row.points || 0) + '</span>';
+    html += '<span class="lb-stat">' + (row.games || 0) + '</span>';
+    html += '</div>';
+  }
+  container.innerHTML = html;
+}
+
+function renderBotsList(bots) {
+  var container = document.getElementById("botsList");
+  if (!bots || bots.length === 0) {
+    container.innerHTML = '<span class="no-games">No bots registered</span>';
+    return;
+  }
+  var html = "";
+  for (var i = 0; i < bots.length; i++) {
+    var bot = bots[i];
+    html += '<div class="bot-list-item">';
+    html += '<span class="bot-name">' + escHtml(bot.name) + '</span>';
+    html += '<button onclick="viewBotCode(\'' + escAttr(bot.name) + '\')">View Code</button>';
+    html += '</div>';
+  }
+  container.innerHTML = html;
+}
+
+function renderPastGames(games, append) {
+  var container = document.getElementById("pastGamesList");
+  if (!append) {
+    container.innerHTML = "";
+  }
+  if (!games || games.length === 0) {
+    if (!append) {
+      container.innerHTML = '<span class="no-games">No completed games yet</span>';
+    }
+    return;
+  }
+  for (var i = 0; i < games.length; i++) {
+    var g = games[i];
+    var row = document.createElement("div");
+    row.className = "past-game-row";
+    row.dataset.id = g.id;
+    row.onclick = (function(id) { return function() { loadReplay(id); }; })(g.id);
+    var winnerColor = PLAYER_COLORS[g.winnerColor] || "#e8e0d4";
+    row.innerHTML = '<span class="past-game-winner" style="color:' + winnerColor + '">' + escHtml(g.winner || "Unknown") + '</span>' +
+      '<span class="past-game-meta">' + (g.moves || 0) + ' moves &middot; ' + escHtml(g.date || "") + '</span>';
+    container.appendChild(row);
+  }
+}
+
+// API Functions
+function fetchState() {
+  fetch(apiBase() + "/api/state")
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      state = data;
+      if (data.board) renderBoard(data.board);
+      if (data.players) renderPlayerCards(data.players);
+      if (data.lastMove) {
+        lastMoveFrom = data.lastMove.from;
+        lastMoveTo = data.lastMove.to;
+        if (data.board) renderBoard(data.board);
+      }
+      if (data.moveNotation) {
+        document.getElementById("moveDisplay").textContent = data.moveNotation;
+      }
+      updateStatusBar(data.status || "idle");
+    })
+    .catch(function(err) {
+      console.error("fetchState error:", err);
+    });
+}
+
+function fetchLeaderboard() {
+  fetch(apiBase() + "/api/leaderboard")
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      renderLeaderboard(data);
+    })
+    .catch(function(err) {
+      console.error("fetchLeaderboard error:", err);
+    });
+}
+
+function fetchBots() {
+  fetch(apiBase() + "/api/bots")
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      renderBotsList(data);
+    })
+    .catch(function(err) {
+      console.error("fetchBots error:", err);
+      document.getElementById("botsList").innerHTML = '<span class="no-games">Failed to load bots</span>';
+    });
+}
+
+function uploadBot() {
+  var name = document.getElementById("botName").value.trim();
+  var password = document.getElementById("botPassword").value;
+  var code = document.getElementById("botCode").value;
+  var msgEl = document.getElementById("uploadMsg");
+
+  if (!name) { msgEl.textContent = "Bot name is required."; msgEl.style.color = "#e06060"; return; }
+  if (!password) { msgEl.textContent = "Password is required."; msgEl.style.color = "#e06060"; return; }
+  if (!code) { msgEl.textContent = "Bot code is required."; msgEl.style.color = "#e06060"; return; }
+
+  msgEl.textContent = "Uploading...";
+  msgEl.style.color = "#9a9080";
+
+  fetch(apiBase() + "/api/bot/upload", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: name, password: password, code: code })
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.error) {
+        msgEl.textContent = data.error;
+        msgEl.style.color = "#e06060";
+      } else {
+        msgEl.textContent = "Bot uploaded successfully!";
+        msgEl.style.color = "#60c060";
+        document.getElementById("botName").value = "";
+        document.getElementById("botPassword").value = "";
+        document.getElementById("botCode").value = "";
+        fetchBots();
+      }
+    })
+    .catch(function(err) {
+      msgEl.textContent = "Upload failed: " + err.message;
+      msgEl.style.color = "#e06060";
+    });
+}
+
+function runAutobattle() {
+  var btn = document.getElementById("autobattleBtn");
+  var msgEl = document.getElementById("autobattleMsg");
+  btn.disabled = true;
+  btn.textContent = "Running...";
+  msgEl.style.display = "block";
+  msgEl.textContent = "Autobattle in progress...";
+  msgEl.style.color = "#d4a040";
+
+  fetch(apiBase() + "/api/autobattle", { method: "POST" })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      btn.disabled = false;
+      btn.textContent = "Run Autobattle";
+      if (data.error) {
+        msgEl.textContent = data.error;
+        msgEl.style.color = "#e06060";
+      } else {
+        msgEl.textContent = "Autobattle complete! Winner: " + (data.winner || "None");
+        msgEl.style.color = "#60c060";
+        fetchState();
+        fetchLeaderboard();
+        fetchPastGames(true);
+      }
+    })
+    .catch(function(err) {
+      btn.disabled = false;
+      btn.textContent = "Run Autobattle";
+      msgEl.textContent = "Autobattle failed: " + err.message;
+      msgEl.style.color = "#e06060";
+    });
+}
+
+function viewBotCode(botName) {
+  var viewer = document.getElementById("codeViewer");
+  var title = document.getElementById("codeViewerTitle");
+  var content = document.getElementById("codeViewerContent");
+  title.textContent = botName + " — Code";
+  content.textContent = "Loading...";
+  viewer.style.display = "block";
+
+  fetch(apiBase() + "/api/bots")
+    .then(function(r) { return r.json(); })
+    .then(function(bots) {
+      var found = null;
+      for (var i = 0; i < bots.length; i++) {
+        if (bots[i].name === botName) { found = bots[i]; break; }
+      }
+      if (found && found.code) {
+        content.textContent = found.code;
+      } else {
+        content.textContent = "// No code available for this bot";
+      }
+    })
+    .catch(function(err) {
+      content.textContent = "// Error loading code: " + err.message;
+    });
+}
+
+function closeCodeViewer() {
+  document.getElementById("codeViewer").style.display = "none";
+}
+
+function fetchPastGames(reset) {
+  if (historyLoading) return;
+  if (!reset && historyDone) return;
+  if (reset) {
+    historyOffset = 0;
+    historyDone = false;
+  }
+  historyLoading = true;
+
+  fetch(apiBase() + "/api/history?limit=10&offset=" + historyOffset)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      historyLoading = false;
+      if (!data || data.length === 0) {
+        historyDone = true;
+        if (historyOffset === 0) {
+          renderPastGames([], false);
+        }
+        return;
+      }
+      renderPastGames(data, historyOffset > 0);
+      historyOffset += data.length;
+      if (data.length < 10) historyDone = true;
+    })
+    .catch(function(err) {
+      historyLoading = false;
+      console.error("fetchPastGames error:", err);
+    });
+}
+
+// Infinite scroll for history
+function setupHistoryScroll() {
+  var container = document.getElementById("pastGamesList");
+  container.addEventListener("scroll", function() {
+    if (container.scrollTop + container.clientHeight >= container.scrollHeight - 50) {
+      fetchPastGames(false);
+    }
+  });
+}
+
+// Replay System
+function loadReplay(gameId) {
+  // Highlight active row
+  var rows = document.querySelectorAll(".past-game-row");
+  rows.forEach(function(row) {
+    row.classList.toggle("active", row.dataset.id == gameId);
+  });
+
+  fetch(apiBase() + "/api/history/" + gameId)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      replayData = data;
+      replayIndex = 0;
+      replayPlaying = false;
+      if (replayTimer) { clearInterval(replayTimer); replayTimer = null; }
+
+      var controls = document.getElementById("replayControls");
+      controls.style.display = "block";
+      document.getElementById("replayTitle").textContent = "Game #" + gameId;
+      document.getElementById("replayMoveMax").textContent = data.moves ? data.moves.length : 0;
+      document.getElementById("replayPlayBtn").textContent = "\u25B6";
+
+      replayRenderFrame();
+    })
+    .catch(function(err) {
+      console.error("loadReplay error:", err);
+    });
+}
+
+function replayRenderFrame() {
+  if (!replayData) return;
+  var moves = replayData.moves || [];
+  var total = moves.length;
+  document.getElementById("replayMoveNum").textContent = replayIndex;
+  document.getElementById("replayMoveMax").textContent = total;
+
+  var pct = total > 0 ? (replayIndex / total * 100) : 0;
+  document.getElementById("replayProgressFill").style.width = pct + "%";
+
+  // Render board state at replayIndex
+  if (replayIndex === 0 && replayData.initialBoard) {
+    lastMoveFrom = null;
+    lastMoveTo = null;
+    renderBoard(replayData.initialBoard);
+    document.getElementById("replayMoveInfo").textContent = "Starting position";
+    if (replayData.players) renderPlayerCards(replayData.players);
+  } else if (replayIndex > 0 && moves[replayIndex - 1]) {
+    var move = moves[replayIndex - 1];
+    if (move.board) {
+      lastMoveFrom = move.from || null;
+      lastMoveTo = move.to || null;
+      renderBoard(move.board);
+    }
+    if (move.players) renderPlayerCards(move.players);
+    var notation = move.notation || "";
+    document.getElementById("replayMoveInfo").textContent = notation;
+    document.getElementById("moveDisplay").textContent = notation;
+  }
+}
+
+function replayStep(dir) {
+  if (!replayData) return;
+  var total = (replayData.moves || []).length;
+  replayIndex = Math.max(0, Math.min(total, replayIndex + dir));
+  replayRenderFrame();
+}
+
+function replayToggle() {
+  if (!replayData) return;
+  replayPlaying = !replayPlaying;
+  var btn = document.getElementById("replayPlayBtn");
+  if (replayPlaying) {
+    btn.textContent = "\u23F8";
+    btn.classList.add("active");
+    replayTimer = setInterval(function() {
+      var total = (replayData.moves || []).length;
+      if (replayIndex >= total) {
+        replayPlaying = false;
+        btn.textContent = "\u25B6";
+        btn.classList.remove("active");
+        clearInterval(replayTimer);
+        replayTimer = null;
+        return;
+      }
+      replayIndex++;
+      replayRenderFrame();
+    }, replaySpeed);
+  } else {
+    btn.textContent = "\u25B6";
+    btn.classList.remove("active");
+    if (replayTimer) { clearInterval(replayTimer); replayTimer = null; }
+  }
+}
+
+function replaySetSpeed(val) {
+  replaySpeed = parseInt(val) || 500;
+  if (replayPlaying && replayTimer) {
+    clearInterval(replayTimer);
+    replayTimer = setInterval(function() {
+      var total = (replayData.moves || []).length;
+      if (replayIndex >= total) {
+        replayPlaying = false;
+        document.getElementById("replayPlayBtn").textContent = "\u25B6";
+        document.getElementById("replayPlayBtn").classList.remove("active");
+        clearInterval(replayTimer);
+        replayTimer = null;
+        return;
+      }
+      replayIndex++;
+      replayRenderFrame();
+    }, replaySpeed);
+  }
+}
+
+function replaySeek(event) {
+  if (!replayData) return;
+  var bar = event.currentTarget;
+  var rect = bar.getBoundingClientRect();
+  var pct = (event.clientX - rect.left) / rect.width;
+  var total = (replayData.moves || []).length;
+  replayIndex = Math.round(pct * total);
+  replayIndex = Math.max(0, Math.min(total, replayIndex));
+  replayRenderFrame();
+}
+
+// Status bar
+function updateStatusBar(status) {
+  var bar = document.getElementById("statusBar");
+  bar.className = "status-bar";
+  if (status === "connected" || status === "in_progress") {
+    bar.classList.add("connected");
+    bar.textContent = "Game in progress";
+  } else if (status === "finished") {
+    bar.classList.add("disconnected");
+    bar.textContent = "Game finished";
+  } else {
+    bar.classList.add("idle");
+    bar.textContent = "Waiting for game...";
+  }
+}
+
+// WebSocket
+function connectWS() {
+  var proto = location.protocol === "https:" ? "wss:" : "ws:";
+  var url = proto + "//" + location.host + apiBase() + "/ws";
+  ws = new WebSocket(url);
+
+  ws.onopen = function() {
+    updateStatusBar("connected");
+  };
+
+  ws.onmessage = function(event) {
+    try {
+      var msg = JSON.parse(event.data);
+      if (msg.type === "move") {
+        lastMoveFrom = msg.from || null;
+        lastMoveTo = msg.to || null;
+        if (msg.board) renderBoard(msg.board);
+        if (msg.players) renderPlayerCards(msg.players);
+        if (msg.notation) {
+          document.getElementById("moveDisplay").textContent = msg.notation;
+        }
+      } else if (msg.type === "state") {
+        state = msg;
+        if (msg.board) renderBoard(msg.board);
+        if (msg.players) renderPlayerCards(msg.players);
+        updateStatusBar(msg.status || "idle");
+      } else if (msg.type === "gameOver") {
+        updateStatusBar("finished");
+        if (msg.winner) {
+          document.getElementById("moveDisplay").textContent = "Game over! Winner: " + msg.winner;
+        }
+        fetchLeaderboard();
+        fetchPastGames(true);
+      } else if (msg.type === "autobattleProgress") {
+        var msgEl = document.getElementById("autobattleMsg");
+        msgEl.style.display = "block";
+        msgEl.textContent = msg.message || "Running...";
+        msgEl.style.color = "#d4a040";
+        if (msg.board) renderBoard(msg.board);
+        if (msg.players) renderPlayerCards(msg.players);
+        if (msg.notation) {
+          document.getElementById("moveDisplay").textContent = msg.notation;
+        }
+      }
+    } catch (e) {
+      console.error("WS parse error:", e);
+    }
+  };
+
+  ws.onclose = function() {
+    updateStatusBar("idle");
+    setTimeout(connectWS, 3000);
+  };
+
+  ws.onerror = function() {
+    ws.close();
+  };
+}
+
+// Utility
+function escHtml(str) {
+  var div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function escAttr(str) {
+  return str.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+}
+
+// Init
+function init() {
+  initBoard();
+  fetchState();
+  fetchLeaderboard();
+  fetchBots();
+  fetchPastGames(true);
+  setupHistoryScroll();
+  connectWS();
+}
+
+init();
+</script>
+</body>
+</html>
