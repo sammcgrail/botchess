@@ -874,28 +874,32 @@ function runAutobattle() {
   btn.disabled = true;
   btn.textContent = "Running...";
   msgEl.style.display = "block";
-  msgEl.textContent = "Autobattle in progress...";
+  msgEl.textContent = "Autobattle started — running in background...";
   msgEl.style.color = "#d4a040";
 
   fetch(apiBase() + "/api/autobattle", { method: "POST", headers: {"Content-Type": "application/json"}, body: "{}" })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      btn.disabled = false;
-      btn.textContent = "Run Autobattle";
       if (data.error) {
+        btn.disabled = false;
+        btn.textContent = "Run Test Battle";
         msgEl.textContent = data.error;
         msgEl.style.color = "#e06060";
       } else {
-        msgEl.textContent = "Autobattle complete! Winner: " + (data.winner || "None");
-        msgEl.style.color = "#60c060";
-        fetchState();
-        fetchLeaderboard();
-        fetchPastGames(true);
+        msgEl.textContent = "Autobattle running: " + (data.bots || []).join(" vs ") + "...";
+        msgEl.style.color = "#d4a040";
+        // Re-enable after a short delay (game runs async in background)
+        setTimeout(function() {
+          btn.disabled = false;
+          btn.textContent = "Run Test Battle";
+          fetchLeaderboard();
+          fetchPastGames(true);
+        }, 5000);
       }
     })
     .catch(function(err) {
       btn.disabled = false;
-      btn.textContent = "Run Autobattle";
+      btn.textContent = "Run Test Battle";
       msgEl.textContent = "Autobattle failed: " + err.message;
       msgEl.style.color = "#e06060";
     });
