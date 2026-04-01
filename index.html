@@ -857,6 +857,7 @@ function fetchState() {
       } else if (data.status === "finished") {
         var winner = data.winner != null && data.players ? data.players[data.winner] : null;
         document.getElementById("moveDisplay").textContent = "Game finished" + (winner ? " — " + winner.name + " wins" : "");
+        if (winner) showWinScreen(winner.name, data.winner, data.winReason, data.players);
       }
     })
     .catch(function(err) {
@@ -1271,7 +1272,6 @@ function connectWS() {
       if (msg.type === "state" || msg.type === "new_game") {
         // Full state update (on connect or new game start)
         if (replayData) return; // Don't override replay view
-        hideWinScreen(); // Always hide win screen on new state/game
         if (msg.board) {
           lastMoveFrom = msg.lastMove ? msg.lastMove.from : null;
           lastMoveTo = msg.lastMove ? msg.lastMove.to : null;
@@ -1280,7 +1280,15 @@ function connectWS() {
         if (msg.players) renderPlayerCards(msg.players);
         updateStatusBar(msg.status || "in_progress");
         if (msg.type === "new_game") {
+          hideWinScreen();
           document.getElementById("moveDisplay").textContent = "New game starting...";
+        } else if (msg.type === "state" && msg.status === "finished" && msg.winner != null && msg.players) {
+          // Connecting during finished game — show win screen
+          var winnerPlayer = msg.players[msg.winner];
+          if (winnerPlayer) showWinScreen(winnerPlayer.name, msg.winner, msg.winReason, msg.players);
+          document.getElementById("moveDisplay").textContent = "Game finished — " + (winnerPlayer ? winnerPlayer.name + " wins" : "");
+        } else {
+          hideWinScreen();
         }
       } else if (msg.type === "move") {
         if (replayData) return; // Don't override replay view
