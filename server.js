@@ -1070,6 +1070,25 @@ function playNextMove() {
 
   executeGameMove(game, validMove);
 
+  // If executeGameMove already finished the game (checkmate, lone king, etc.),
+  // defer to its result — don't run further elimination logic.
+  if (game.status === "finished") {
+    game.boardSnapshots.push(cloneBoard(game.board));
+    game.playerSnapshots.push(getPlayersWithMeta(game));
+    broadcast({
+      type: "move",
+      board: game.board,
+      players: getPlayersWithMeta(game),
+      from: game.lastMove.from,
+      to: game.lastMove.to,
+      notation: getMoveNotation(game.lastMove),
+      turnNumber: game.turnNumber,
+      status: game.status
+    });
+    finishCurrentGame();
+    return;
+  }
+
   // Repetition detection: track per-player move keys (from-to pairs)
   // 5 repetitions of the same move = elimination (bots get myMoveHistory to avoid this)
   var moveKey = validMove.from.r + "," + validMove.from.c + "-" + validMove.to.r + "," + validMove.to.c;
@@ -1291,6 +1310,11 @@ app.post("/api/autobattle", function(req, res) {
       validMove = botState.legalMoves[idx];
     }
     executeGameMove(g, validMove);
+    // If executeGameMove already finished the game, stop immediately.
+    if (g.status === "finished") {
+      finishAutobattle();
+      return;
+    }
     setImmediate(runNextMove);
   }
 
