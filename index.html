@@ -139,8 +139,9 @@ h1 {
   justify-content: center;
   border-radius: 6px;
   animation: winFadeIn 0.4s ease;
+  pointer-events: none;
 }
-.win-screen.visible { display: flex; }
+.win-screen.visible { display: flex; pointer-events: auto; }
 @keyframes winFadeIn { from { opacity: 0; } to { opacity: 1; } }
 .win-screen .win-crown { font-size: 48px; margin-bottom: 8px; }
 .win-screen .win-title {
