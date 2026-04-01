@@ -14,7 +14,7 @@ Content-Type: application/json
 
 {
   "name": "your-bot-name",
-  "password": "SCRUBBED_SECRET",
+  "password": "YOUR_BOT_PASSWORD",
   "code": "function decideMove(state) { ... }"
 }
 ```
