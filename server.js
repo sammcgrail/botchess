@@ -343,8 +343,14 @@ function getSlideMoves(board, r, c, player, directions) {
     var nr = r + dr, nc = c + dc;
     while (inBounds(nr, nc)) {
       var target = board[nr][nc];
-      if (!target || target.dead) {
-        // Empty square or dead piece — can pass through
+      if (target && target.dead) {
+        // Dead piece — slide through but can't stop here (pieces remain on board)
+        nr += dr;
+        nc += dc;
+        continue;
+      }
+      if (!target) {
+        // Empty square — can move here
         moves.push({ from: { r: r, c: c }, to: { r: nr, c: nc }, promotion: null });
       } else if (target.player !== player) {
         moves.push({ from: { r: r, c: c }, to: { r: nr, c: nc }, promotion: null });
@@ -1014,7 +1020,7 @@ function finishCurrentGame() {
     game.status = "finished";
     var maxScore = -1, maxPlayer = 0;
     for (var i = 0; i < 4; i++) {
-      if (game.players[i].score > maxScore) {
+      if (game.players[i].status === "alive" && game.players[i].score > maxScore) {
         maxScore = game.players[i].score;
         maxPlayer = i;
       }
@@ -1149,7 +1155,7 @@ app.post("/api/autobattle", function(req, res) {
     g.status = "finished";
     var maxScore = -1, maxPlayer = 0;
     for (var i = 0; i < 4; i++) {
-      if (g.players[i].score > maxScore) {
+      if (g.players[i].status === "alive" && g.players[i].score > maxScore) {
         maxScore = g.players[i].score;
         maxPlayer = i;
       }
