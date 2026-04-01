@@ -1184,7 +1184,8 @@ app.post("/api/autobattle", function(req, res) {
           if (g.players[wi].status === "alive") { g.winner = wi; break; }
         }
         g.winReason = "last_standing";
-        break;
+        finishAutobattle();
+        return;
       }
       g.currentPlayer = getNextAlivePlayer(g, cp);
       setImmediate(runNextMove);
