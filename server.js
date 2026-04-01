@@ -522,6 +522,24 @@ function executeGameMove(g, move) {
     }
   }
 
+  // Check for lone kings — players with only a king left are eliminated
+  for (var p = 0; p < 4; p++) {
+    if (g.players[p].status !== "alive") continue;
+    var pieceCount = 0;
+    for (var r = 0; r < BOARD_SIZE; r++) {
+      for (var c = 0; c < BOARD_SIZE; c++) {
+        var cell = g.board[r][c];
+        if (cell && !cell.dead && cell.player === p && cell.piece !== "K") {
+          pieceCount++;
+        }
+      }
+    }
+    if (pieceCount === 0) {
+      console.log("[" + new Date().toISOString() + "] " + g.players[p].name + " eliminated — lone king (no material)");
+      eliminatePlayer(g, p, "no material");
+    }
+  }
+
   // Check game end conditions
   var alive = countAlivePlayers(g);
   if (alive <= 1) {
