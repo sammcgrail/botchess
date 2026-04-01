@@ -891,11 +891,20 @@ app.post("/api/autobattle", function(req, res) {
       continue;
     }
 
-    var botMove = runBot(allBotNames[cp], botState, allBotCodes[cp]);
-    var validMove = validateBotMove(botMove, botState.legalMoves);
+    // Give bot up to 3 attempts for a valid move
+    var validMove = null;
+    var invalidCount = 0;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      var botMove = runBot(allBotNames[cp], botState, allBotCodes[cp]);
+      validMove = validateBotMove(botMove, botState.legalMoves);
+      if (validMove) break;
+      invalidCount++;
+      console.log(allBotNames[cp] + " made invalid move (attempt " + (attempt + 1) + "/3):", JSON.stringify(botMove));
+    }
 
     if (!validMove) {
-      // Invalid move — pick random legal move
+      // 3 invalid moves — pick random legal move as fallback
+      console.log(allBotNames[cp] + " failed 3 times — using random move");
       var idx = Math.floor(Math.random() * botState.legalMoves.length);
       validMove = botState.legalMoves[idx];
     }
