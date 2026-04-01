@@ -19,7 +19,8 @@ var MAX_HISTORY = 50;
 var DB_PATH = process.env.BOTCHESS_DB || path.join(__dirname, "data", "botchess.db");
 var BOTS_DIR = path.join(__dirname, "data", "bots");
 var BOTS_VERSIONS_DIR = path.join(__dirname, "data", "bots_versions");
-var UPLOAD_PASSWORD = process.env.BOT_UPLOAD_PASSWORD || "REDACTED_PASSWORD";
+var UPLOAD_PASSWORD = process.env.BOT_UPLOAD_PASSWORD;
+if (!UPLOAD_PASSWORD) { console.error("FATAL: BOT_UPLOAD_PASSWORD env var is required"); process.exit(1); }
 
 var PLAYER_COLORS = ["red", "blue", "yellow", "green"];
 var PLAYER_NAMES = ["Red", "Blue", "Yellow", "Green"];
