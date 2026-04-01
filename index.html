@@ -1189,6 +1189,18 @@ function connectWS() {
           document.getElementById("moveDisplay").textContent = "Move " + (msg.turnNumber || "") + ": " + msg.notation;
         }
         updateStatusBar(msg.status || "in_progress");
+      } else if (msg.type === "bot_updated") {
+        fetchBots();
+        // If we have this bot's code viewer open, refresh it
+        var expand = document.getElementById("botExpand_" + msg.name);
+        if (expand && expand.style.display === "block") {
+          var pre = document.getElementById("botCodePre_" + msg.name);
+          if (pre) {
+            fetch(apiBase() + "/api/bot/" + encodeURIComponent(msg.name))
+              .then(function(r) { return r.json(); })
+              .then(function(d) { pre.textContent = d.code || "// No code"; });
+          }
+        }
       } else if (msg.type === "game_over") {
         if (replayData) {
           // Still refresh history/leaderboard/bots

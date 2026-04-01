@@ -802,6 +802,8 @@ app.post("/api/bot/upload", function(req, res) {
   }
 
   saveBot(name, code);
+  var versions = listBotVersions(name);
+  broadcast({ type: "bot_updated", name: name, versions: versions.length });
   res.json({ ok: true, name: name, size: code.length });
 });
 
