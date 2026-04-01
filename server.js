@@ -764,7 +764,7 @@ function getPublicState(g) {
 
 // --- REST API ---
 
-app.use(express.json({ limit: "100kb" }));
+app.use(express.json({ limit: "500kb" }));
 app.use(express.static(__dirname));
 
 app.get("/api/state", function(req, res) {
@@ -787,7 +787,7 @@ app.post("/api/bot/upload", function(req, res) {
   if (password !== UPLOAD_PASSWORD) return res.status(403).json({ error: "Invalid password" });
   if (!name || !code) return res.status(400).json({ error: "name and code are required" });
   if (!/^[a-zA-Z0-9_-]+$/.test(name)) return res.status(400).json({ error: "Invalid bot name (alphanumeric, hyphens, underscores only)" });
-  if (code.length > 50000) return res.status(400).json({ error: "Bot code too large (max 50KB)" });
+  if (code.length > 200000) return res.status(400).json({ error: "Bot code too large (max 200KB)" });
 
   // Syntax check
   try {

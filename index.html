@@ -127,6 +127,55 @@ h1 {
   letter-spacing: 1px;
 }
 
+/* Win Screen Overlay */
+.win-screen {
+  display: none;
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(10, 8, 6, 0.88);
+  z-index: 50;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  animation: winFadeIn 0.4s ease;
+}
+.win-screen.visible { display: flex; }
+@keyframes winFadeIn { from { opacity: 0; } to { opacity: 1; } }
+.win-screen .win-crown { font-size: 48px; margin-bottom: 8px; }
+.win-screen .win-title {
+  font-size: 1.6em;
+  font-weight: bold;
+  margin-bottom: 4px;
+  text-shadow: 0 0 20px currentColor;
+}
+.win-screen .win-reason {
+  font-size: 0.9em;
+  color: #9a9080;
+  margin-bottom: 16px;
+}
+.win-screen .win-scores {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.win-screen .win-score-card {
+  background: #2a2622;
+  border-radius: 8px;
+  padding: 8px 16px;
+  text-align: center;
+  border-top: 3px solid #666;
+  min-width: 80px;
+}
+.win-screen .win-score-card .ws-name { font-size: 0.85em; color: #ccc; }
+.win-screen .win-score-card .ws-pts { font-size: 1.4em; font-weight: bold; }
+.win-screen .win-next {
+  margin-top: 16px;
+  font-size: 0.8em;
+  color: #7a7060;
+}
+
 /* Board */
 .board-wrapper {
   display: flex;
@@ -503,8 +552,15 @@ h1 {
     <!-- Center: Board + Replay -->
     <div class="col-center">
       <div class="move-display" id="moveDisplay">Waiting for game...</div>
-      <div class="board-wrapper">
+      <div class="board-wrapper" style="position:relative;">
         <div class="board-grid" id="boardGrid"></div>
+        <div class="win-screen" id="winScreen">
+          <div class="win-crown">&#x1F451;</div>
+          <div class="win-title" id="winTitle">Winner!</div>
+          <div class="win-reason" id="winReason"></div>
+          <div class="win-scores" id="winScores"></div>
+          <div class="win-next">Next game starting soon...</div>
+        </div>
       </div>
       <div class="replay-controls" id="replayControls">
         <h2>Replay &mdash; <span id="replayTitle">Game</span> <button onclick="closeReplay()" style="font-family:Georgia,serif;font-size:0.8em;padding:2px 8px;border-radius:4px;border:1px solid #3a3530;background:#1a1816;color:#e8e0d4;cursor:pointer;margin-left:auto;">&#10005; Back to Live</button></h2>
@@ -1153,6 +1209,51 @@ function updateStatusBar(status) {
   }
 }
 
+function showWinScreen(winnerName, winnerIndex, reason, players) {
+  var screen = document.getElementById("winScreen");
+  var title = document.getElementById("winTitle");
+  var reasonEl = document.getElementById("winReason");
+  var scoresEl = document.getElementById("winScores");
+
+  var winnerColor = "#e8e0d4";
+  if (players) {
+    for (var i = 0; i < players.length; i++) {
+      if (players[i].name === winnerName) {
+        winnerColor = PLAYER_COLORS[players[i].color] || winnerColor;
+        break;
+      }
+    }
+  }
+
+  title.textContent = winnerName + " wins!";
+  title.style.color = winnerColor;
+
+  var reasonText = reason === "move_limit" ? "Move limit reached — highest score wins" :
+                   reason === "last_standing" ? "Last player standing" : (reason || "");
+  reasonEl.textContent = reasonText;
+
+  var html = "";
+  if (players) {
+    var sorted = players.slice().sort(function(a, b) { return (b.score || 0) - (a.score || 0); });
+    for (var i = 0; i < sorted.length; i++) {
+      var p = sorted[i];
+      var c = PLAYER_COLORS[p.color] || "#666";
+      var isWinner = p.name === winnerName;
+      html += '<div class="win-score-card" style="border-top-color:' + c + (isWinner ? ';box-shadow:0 0 12px ' + c : '') + '">';
+      html += '<div class="ws-name" style="color:' + c + '">' + escAttr(p.name) + '</div>';
+      html += '<div class="ws-pts" style="color:' + (isWinner ? c : '#e8e0d4') + '">' + (p.score || 0) + ' pts</div>';
+      if (p.status !== "alive") html += '<div style="font-size:0.7em;color:#7a7060;">' + p.status + '</div>';
+      html += '</div>';
+    }
+  }
+  scoresEl.innerHTML = html;
+  screen.classList.add("visible");
+}
+
+function hideWinScreen() {
+  document.getElementById("winScreen").classList.remove("visible");
+}
+
 // WebSocket
 function connectWS() {
   var proto = location.protocol === "https:" ? "wss:" : "ws:";
@@ -1169,6 +1270,7 @@ function connectWS() {
       if (msg.type === "state" || msg.type === "new_game") {
         // Full state update (on connect or new game start)
         if (replayData) return; // Don't override replay view
+        hideWinScreen(); // Always hide win screen on new state/game
         if (msg.board) {
           lastMoveFrom = msg.lastMove ? msg.lastMove.from : null;
           lastMoveTo = msg.lastMove ? msg.lastMove.to : null;
@@ -1181,6 +1283,7 @@ function connectWS() {
         }
       } else if (msg.type === "move") {
         if (replayData) return; // Don't override replay view
+        hideWinScreen(); // Hide win screen if still showing from previous game
         lastMoveFrom = msg.from || null;
         lastMoveTo = msg.to || null;
         if (msg.board) renderBoard(msg.board);
@@ -1214,6 +1317,7 @@ function connectWS() {
           document.getElementById("moveDisplay").textContent = "Game over! " + msg.winner + " wins (" + (msg.reason || "") + ")";
         }
         if (msg.players) renderPlayerCards(msg.players);
+        showWinScreen(msg.winner, msg.winner_index, msg.reason, msg.players);
         fetchLeaderboard();
         fetchBots();
         fetchPastGames(true);
