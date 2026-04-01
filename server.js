@@ -841,7 +841,7 @@ app.get("/api/leaderboard", function(req, res) {
 
 // --- Continuous Game Loop ---
 
-var MOVE_DELAY_MS = 2000;   // 2 seconds between moves
+var MOVE_DELAY_MS = 1000;   // 1 second between moves (longer = bot compute time)
 var GAME_DELAY_MS = 8000;   // 8 seconds between games
 var gameLoopRunning = false;
 var gameLoopBotCodes = {};   // snapshot of bot codes for current game
