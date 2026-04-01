@@ -877,7 +877,7 @@ function runAutobattle() {
   msgEl.textContent = "Autobattle in progress...";
   msgEl.style.color = "#d4a040";
 
-  fetch(apiBase() + "/api/autobattle", { method: "POST" })
+  fetch(apiBase() + "/api/autobattle", { method: "POST", headers: {"Content-Type": "application/json"}, body: "{}" })
     .then(function(r) { return r.json(); })
     .then(function(data) {
       btn.disabled = false;
