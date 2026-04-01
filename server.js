@@ -416,6 +416,8 @@ function executeMoveSilent(board, move, player) {
 }
 
 // --- Game State ---
+// NOTE: `game` and `botMemory` are live-game-only globals.
+// Autobattle must NEVER read or write these — it uses its own local state.
 
 var game = null;
 var botMemory = {};  // per-bot-name persistent memory within a game
@@ -675,8 +677,11 @@ function saveBot(name, code) {
 // Default bot: random legal move
 var DEFAULT_BOT_CODE = 'function decideMove(state) {\n  if (!state.legalMoves || state.legalMoves.length === 0) return null;\n  var idx = Math.floor(Math.random() * state.legalMoves.length);\n  return state.legalMoves[idx];\n}';
 
-// Run a bot in subprocess — returns move, updates botMemory
-function runBot(name, gameState, overrideCode) {
+// Run a bot in subprocess — returns move, updates memory store.
+// `memory` param: the memory object to write to (global botMemory for live games,
+// local object for autobattles). Defaults to global botMemory for backwards compat.
+function runBot(name, gameState, overrideCode, memory) {
+  var mem = memory || botMemory;
   var code = overrideCode || getBot(name) || DEFAULT_BOT_CODE;
   try {
     var input = JSON.stringify({ code: code, state: gameState });
@@ -699,7 +704,7 @@ function runBot(name, gameState, overrideCode) {
       if (parsed && typeof parsed === "object" && parsed.move && parsed.move.from && parsed.move.to) {
         // New format: { move, memory }
         if (parsed.memory && typeof parsed.memory === "object") {
-          botMemory[name] = parsed.memory;
+          mem[name] = parsed.memory;
         }
         return parsed.move;
       }
@@ -713,8 +718,11 @@ function runBot(name, gameState, overrideCode) {
   }
 }
 
-// Build bot state for a given game and player
-function buildBotState(g, playerIndex) {
+// Build bot state for a given game and player.
+// `memory` param: pass the appropriate memory store (global botMemory for live games,
+// local autobattle memory for autobattles). Defaults to global botMemory for backwards compat.
+function buildBotState(g, playerIndex, memory) {
+  var mem = memory || botMemory;
   var legalMoves = getLegalMoves(g.board, playerIndex);
   // Build this player's move history from the full game history
   var myMoves = [];
@@ -734,7 +742,7 @@ function buildBotState(g, playerIndex) {
     turnNumber: g.turnNumber,
     lastMove: g.lastMove,
     myMoveHistory: myMoves,
-    memory: botMemory[g.players[playerIndex].name] || {}
+    memory: mem[g.players[playerIndex].name] || {}
   };
 }
 
@@ -979,7 +987,7 @@ function startNewGame() {
 
   var allBotNames = [];
   gameLoopBotCodes = {};
-  botMemory = {};  // reset memory for new game
+  botMemory = {};  // reset memory for new live game (autobattle has its own local memory)
 
   for (var i = 0; i < 4; i++) {
     if (i < botNames.length) {
@@ -999,6 +1007,7 @@ function startNewGame() {
 
   console.log("[" + new Date().toISOString() + "] New game started: " + allBotNames.join(" vs "));
 
+  // Live-game-only: notify spectators of new game
   broadcast({
     type: "new_game",
     board: game.board,
@@ -1114,7 +1123,7 @@ function playNextMove() {
   var notation = getMoveNotation(game.lastMove);
   var playersWithMeta = getPlayersWithMeta(game);
 
-  // Broadcast the move
+  // Live-game-only: broadcast move to spectators (autobattle never calls this path)
   broadcast({
     type: "move",
     board: game.board,
@@ -1201,6 +1210,7 @@ function finishCurrentGame() {
 
   updateLeaderboard(game.players, game.winner);
 
+  // Live-game-only: broadcast game_over to spectators
   broadcast({
     type: "game_over",
     winner: winnerName,
@@ -1261,8 +1271,8 @@ app.post("/api/autobattle", function(req, res) {
   autobattleRunning = true;
   var g = createGame(allBotNames);
   var gameId = uuid();
-  var savedMemory = botMemory;
-  botMemory = {};  // fresh memory for autobattle
+  // Autobattle uses its own isolated memory — never touches global botMemory
+  var autobattleMemory = {};
 
   // Run async — yield event loop between moves
   function runNextMove() {
@@ -1277,7 +1287,8 @@ app.post("/api/autobattle", function(req, res) {
       setImmediate(runNextMove);
       return;
     }
-    var botState = buildBotState(g, cp);
+    // Pass autobattleMemory so we never read/write the global botMemory
+    var botState = buildBotState(g, cp, autobattleMemory);
     if (botState.legalMoves.length === 0) {
       // Player has no legal moves — eliminate them
       if (isInCheck(g.board, cp)) {
@@ -1301,7 +1312,8 @@ app.post("/api/autobattle", function(req, res) {
     }
     var validMove = null;
     for (var attempt = 0; attempt < 3; attempt++) {
-      var botMove = runBot(allBotNames[cp], botState, allBotCodes[cp]);
+      // Pass autobattleMemory so runBot writes memory to local store, not global
+      var botMove = runBot(allBotNames[cp], botState, allBotCodes[cp], autobattleMemory);
       validMove = validateBotMove(botMove, botState.legalMoves);
       if (validMove) break;
     }
@@ -1341,7 +1353,9 @@ app.post("/api/autobattle", function(req, res) {
       winner_name: g.players[g.winner].name,
       reason: g.winReason,
       totalMoves: g.turnNumber,
-      moves: g.moveHistory
+      moves: g.moveHistory,
+      // Tag autobattle games so they can be distinguished from live games
+      source: "autobattle"
     };
     try {
       db.prepare("INSERT INTO games (id, date, data) VALUES (?, ?, ?)").run(entry.id, entry.date, JSON.stringify(entry));
@@ -1349,10 +1363,11 @@ app.post("/api/autobattle", function(req, res) {
     } catch (e) { console.error("Failed to save autobattle:", e.message); }
     updateLeaderboard(g.players, g.winner);
     autobattleRunning = false;
-    botMemory = savedMemory;  // restore live game memory
+    // No botMemory restore needed — we never touched the global
 
-    // Broadcast result
-    broadcast({ type: "game_over", winner: entry.winner_name, reason: entry.reason, players: getPlayersWithMeta(g), game_id: entry.id });
+    // Broadcast as autobattle_result, NOT game_over — live game spectators should not
+    // see this as the current game ending.
+    broadcast({ type: "autobattle_result", winner: entry.winner_name, reason: entry.reason, players: getPlayersWithMeta(g), game_id: entry.id });
   }
 
   // Respond immediately, run in background
