@@ -13,7 +13,7 @@ var wss = new WebSocket.Server({ noServer: true });
 
 var PORT = 20007;
 var BOARD_SIZE = 14;
-var MAX_MOVES = 200;
+var MAX_MOVES = 300;
 var BOT_TIMEOUT_MS = 5000;
 var MAX_HISTORY = 50;
 var DB_PATH = process.env.BOTCHESS_DB || path.join(__dirname, "data", "botchess.db");
