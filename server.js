@@ -19,7 +19,7 @@ var MAX_HISTORY = 50;
 var DB_PATH = process.env.BOTCHESS_DB || path.join(__dirname, "data", "botchess.db");
 var BOTS_DIR = path.join(__dirname, "data", "bots");
 var BOTS_VERSIONS_DIR = path.join(__dirname, "data", "bots_versions");
-var UPLOAD_PASSWORD = "REDACTED_PASSWORD";
+var UPLOAD_PASSWORD = process.env.BOT_UPLOAD_PASSWORD || "REDACTED_PASSWORD";
 
 var PLAYER_COLORS = ["red", "blue", "yellow", "green"];
 var PLAYER_NAMES = ["Red", "Blue", "Yellow", "Green"];
@@ -212,7 +212,8 @@ function isSlideClear(board, fr, fc, tr, tc) {
   var r = fr + dr, c = fc + dc;
   while (r !== tr || c !== tc) {
     if (!inBounds(r, c)) return false;
-    if (board[r][c]) return false; // blocked by any piece (alive or dead)
+    var cell = board[r][c];
+    if (cell && !cell.dead) return false; // blocked by alive piece only — dead pieces are passable
     r += dr;
     c += dc;
   }
@@ -342,15 +343,14 @@ function getSlideMoves(board, r, c, player, directions) {
     var nr = r + dr, nc = c + dc;
     while (inBounds(nr, nc)) {
       var target = board[nr][nc];
-      if (!target) {
+      if (!target || target.dead) {
+        // Empty square or dead piece — can pass through
         moves.push({ from: { r: r, c: c }, to: { r: nr, c: nc }, promotion: null });
-      } else if (target.dead) {
-        break; // Dead pieces are impassable obstacles
       } else if (target.player !== player) {
         moves.push({ from: { r: r, c: c }, to: { r: nr, c: nc }, promotion: null });
         break; // Can capture but can't go further
       } else {
-        break; // Own piece blocks
+        break; // Own alive piece blocks
       }
       nr += dr;
       nc += dc;
