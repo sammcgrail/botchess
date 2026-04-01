@@ -258,7 +258,11 @@ function getPseudoLegalMoves(board, player) {
       if (!cell || cell.player !== player || cell.dead) continue;
       var pieceMoves = getPieceMoves(board, r, c, cell, player);
       for (var i = 0; i < pieceMoves.length; i++) {
-        moves.push(pieceMoves[i]);
+        var m = pieceMoves[i];
+        // Kings can never be captured — skip moves targeting a king
+        var target = board[m.to.r][m.to.c];
+        if (target && target.piece === "K" && !target.dead) continue;
+        moves.push(m);
       }
     }
   }
@@ -473,6 +477,11 @@ function executeGameMove(g, move) {
   if (target && target.player !== player && !target.dead) {
     captured = { player: target.player, piece: target.piece };
     g.players[player].score += PIECE_VALUES[target.piece] || 0;
+    // Safety: if a king was captured (should not happen with legal move filtering),
+    // eliminate that player immediately
+    if (target.piece === "K") {
+      eliminatePlayer(g, target.player, "checkmated");
+    }
   }
 
   var piece = g.board[move.from.r][move.from.c];
@@ -958,6 +967,20 @@ function playNextMove() {
   var botState = buildBotState(game, cp);
 
   if (botState.legalMoves.length === 0) {
+    // Player has no legal moves — eliminate them
+    if (isInCheck(game.board, cp)) {
+      eliminatePlayer(game, cp, "checkmated");
+      // Award checkmate points to the player(s) giving check
+    } else {
+      eliminatePlayer(game, cp, "stalemated");
+    }
+
+    var alive = countAlivePlayers(game);
+    if (alive <= 1) {
+      finishCurrentGame();
+      return;
+    }
+
     game.currentPlayer = getNextAlivePlayer(game, cp);
     if (game.currentPlayer === -1) {
       finishCurrentGame();
@@ -1147,6 +1170,21 @@ app.post("/api/autobattle", function(req, res) {
     }
     var botState = buildBotState(g, cp);
     if (botState.legalMoves.length === 0) {
+      // Player has no legal moves — eliminate them
+      if (isInCheck(g.board, cp)) {
+        eliminatePlayer(g, cp, "checkmated");
+      } else {
+        eliminatePlayer(g, cp, "stalemated");
+      }
+      var alive = countAlivePlayers(g);
+      if (alive <= 1) {
+        g.status = "finished";
+        for (var wi = 0; wi < 4; wi++) {
+          if (g.players[wi].status === "alive") { g.winner = wi; break; }
+        }
+        g.winReason = "last_standing";
+        break;
+      }
       g.currentPlayer = getNextAlivePlayer(g, cp);
       setImmediate(runNextMove);
       return;
