@@ -819,6 +819,25 @@ app.get("/api/bot/:name/versions", function(req, res) {
   res.json({ name: req.params.name, versions: versions });
 });
 
+app.delete("/api/bot/:name", function(req, res) {
+  var name = req.params.name;
+  var password = req.body && req.body.password;
+  if (password !== UPLOAD_PASSWORD) return res.status(403).json({ error: "Invalid password" });
+  var botPath = path.join(BOTS_DIR, name + ".js");
+  var versionsPath = path.join(BOTS_VERSIONS_DIR, name);
+  if (!fs.existsSync(botPath)) return res.status(404).json({ error: "Bot not found" });
+  try {
+    fs.unlinkSync(botPath);
+    if (fs.existsSync(versionsPath)) fs.rmSync(versionsPath, { recursive: true });
+    // Remove from leaderboard
+    try { db.prepare("DELETE FROM leaderboard WHERE name = ?").run(name); } catch(e) {}
+    broadcast({ type: "bot_updated", name: name, versions: 0 });
+    res.json({ ok: true, deleted: name });
+  } catch (e) {
+    res.status(500).json({ error: "Failed to delete: " + e.message });
+  }
+});
+
 app.get("/api/bot/:name/version/:ver", function(req, res) {
   var code = getBotVersion(req.params.name, req.params.ver);
   if (!code) return res.status(404).json({ error: "Version not found" });
