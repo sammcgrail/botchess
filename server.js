@@ -1084,8 +1084,13 @@ function finishCurrentGame() {
   setTimeout(startNewGame, GAME_DELAY_MS);
 }
 
-// Manual autobattle endpoint (runs instantly, no delays — for testing)
+// Manual autobattle — runs async in chunks to avoid blocking the event loop
+var autobattleRunning = false;
 app.post("/api/autobattle", function(req, res) {
+  if (autobattleRunning) {
+    return res.status(429).json({ error: "Autobattle already running, please wait" });
+  }
+
   var botNames = req.body.bots;
   var overrides = req.body.overrides || {};
 
@@ -1123,19 +1128,28 @@ app.post("/api/autobattle", function(req, res) {
     }
   }
 
+  autobattleRunning = true;
   var g = createGame(allBotNames);
-  var moveCount = 0;
-  while (g.status === "in_progress" && moveCount < MAX_MOVES) {
+  var gameId = uuid();
+
+  // Run async — yield event loop between moves
+  function runNextMove() {
+    if (g.status !== "in_progress" || g.turnNumber >= MAX_MOVES) {
+      finishAutobattle();
+      return;
+    }
     var cp = g.currentPlayer;
     if (g.players[cp].status !== "alive") {
       g.currentPlayer = getNextAlivePlayer(g, cp);
-      if (g.currentPlayer === -1) break;
-      continue;
+      if (g.currentPlayer === -1) { finishAutobattle(); return; }
+      setImmediate(runNextMove);
+      return;
     }
     var botState = buildBotState(g, cp);
     if (botState.legalMoves.length === 0) {
       g.currentPlayer = getNextAlivePlayer(g, cp);
-      continue;
+      setImmediate(runNextMove);
+      return;
     }
     var validMove = null;
     for (var attempt = 0; attempt < 3; attempt++) {
@@ -1148,50 +1162,48 @@ app.post("/api/autobattle", function(req, res) {
       validMove = botState.legalMoves[idx];
     }
     executeGameMove(g, validMove);
-    moveCount++;
+    setImmediate(runNextMove);
   }
 
-  if (g.status === "in_progress") {
-    g.status = "finished";
-    var maxScore = -1, maxPlayer = 0;
-    for (var i = 0; i < 4; i++) {
-      if (g.players[i].status === "alive" && g.players[i].score > maxScore) {
-        maxScore = g.players[i].score;
-        maxPlayer = i;
+  function finishAutobattle() {
+    if (g.status === "in_progress") {
+      g.status = "finished";
+      var maxScore = -1, maxPlayer = 0;
+      for (var i = 0; i < 4; i++) {
+        if (g.players[i].status === "alive" && g.players[i].score > maxScore) {
+          maxScore = g.players[i].score;
+          maxPlayer = i;
+        }
       }
+      g.winner = maxPlayer;
+      g.winReason = "move_limit";
     }
-    g.winner = maxPlayer;
-    g.winReason = "move_limit";
+    var entry = {
+      id: gameId,
+      date: new Date().toISOString(),
+      players: g.players.map(function(p) {
+        return { name: p.name, color: p.color, score: p.score, status: p.status };
+      }),
+      winner: g.winner,
+      winner_name: g.players[g.winner].name,
+      reason: g.winReason,
+      totalMoves: g.turnNumber,
+      moves: g.moveHistory
+    };
+    try {
+      db.prepare("INSERT INTO games (id, date, data) VALUES (?, ?, ?)").run(entry.id, entry.date, JSON.stringify(entry));
+      db.prepare("DELETE FROM games WHERE id NOT IN (SELECT id FROM games ORDER BY date DESC LIMIT ?)").run(MAX_HISTORY);
+    } catch (e) { console.error("Failed to save autobattle:", e.message); }
+    updateLeaderboard(g.players, g.winner);
+    autobattleRunning = false;
+
+    // Broadcast result
+    broadcast({ type: "game_over", winner: entry.winner_name, reason: entry.reason, players: getPlayersWithMeta(g), game_id: entry.id });
   }
 
-  var entry = {
-    id: uuid(),
-    date: new Date().toISOString(),
-    players: g.players.map(function(p, i) {
-      return { name: p.name, color: p.color, score: p.score, status: p.status };
-    }),
-    winner: g.winner,
-    winner_name: g.players[g.winner].name,
-    reason: g.winReason,
-    totalMoves: g.turnNumber,
-    moves: g.moveHistory
-  };
-
-  try {
-    db.prepare("INSERT INTO games (id, date, data) VALUES (?, ?, ?)").run(entry.id, entry.date, JSON.stringify(entry));
-    db.prepare("DELETE FROM games WHERE id NOT IN (SELECT id FROM games ORDER BY date DESC LIMIT ?)").run(MAX_HISTORY);
-  } catch (e) { console.error("Failed to save autobattle:", e.message); }
-
-  updateLeaderboard(g.players, g.winner);
-
-  res.json({
-    game_id: entry.id,
-    winner: entry.winner_name,
-    winner_index: g.winner,
-    reason: g.winReason,
-    totalMoves: g.turnNumber,
-    players: entry.players
-  });
+  // Respond immediately, run in background
+  res.json({ message: "Autobattle started", game_id: gameId, bots: allBotNames });
+  setImmediate(runNextMove);
 });
 
 // --- Start ---
