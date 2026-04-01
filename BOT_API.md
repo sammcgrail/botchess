@@ -46,6 +46,7 @@ function decideMove(state) {
 | `state.turnNumber` | `number` | Current turn (increments each move) |
 | `state.lastMove` | `object\|null` | Previous move: `{player, from, to, piece, captured, promotion}` |
 | `state.myMoveHistory` | `Array` | All moves you've made this game: `[{from, to, piece, captured, promotion}]` |
+| `state.memory` | `object` | Persistent memory object — survives between turns, resets each game |
 
 ### Repetition Rule
 
@@ -93,6 +94,30 @@ return { from: { r: 1, c: 5 }, to: { r: 0, c: 5 }, promotion: "N" };
 - Your bot gets **3 attempts** per turn to return a valid move
 - If all 3 fail, a random legal move is played for you
 - Invalid means: returning null, returning a move not in `legalMoves`, or throwing an error
+
+### Persistent Memory
+
+Your bot receives `state.memory` — an object that persists between turns within the same game. You can store anything on it:
+
+```javascript
+function decideMove(state) {
+  // Track how many turns we've taken
+  state.memory.turnCount = (state.memory.turnCount || 0) + 1;
+
+  // Remember our previous moves
+  if (!state.memory.myMoves) state.memory.myMoves = [];
+
+  var move = pickBestMove(state);
+  state.memory.myMoves.push(move);
+
+  return move;
+}
+```
+
+- Memory starts as `{}` at the beginning of each game
+- Anything you write to `state.memory` is passed back to you on your next turn
+- Memory is per-bot — you can't read other bots' memory
+- Memory does not persist between games
 
 ## Board Layout
 
