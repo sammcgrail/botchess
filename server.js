@@ -689,6 +689,14 @@ function runBot(name, gameState, overrideCode) {
 // Build bot state for a given game and player
 function buildBotState(g, playerIndex) {
   var legalMoves = getLegalMoves(g.board, playerIndex);
+  // Build this player's move history from the full game history
+  var myMoves = [];
+  for (var i = 0; i < g.moveHistory.length; i++) {
+    if (g.moveHistory[i].player === playerIndex) {
+      var mh = g.moveHistory[i];
+      myMoves.push({ from: mh.from, to: mh.to, piece: mh.piece, captured: mh.captured, promotion: mh.promotion });
+    }
+  }
   return {
     board: g.board,
     myIndex: playerIndex,
@@ -697,7 +705,8 @@ function buildBotState(g, playerIndex) {
     }),
     legalMoves: legalMoves,
     turnNumber: g.turnNumber,
-    lastMove: g.lastMove
+    lastMove: g.lastMove,
+    myMoveHistory: myMoves
   };
 }
 
@@ -959,7 +968,7 @@ function startNewGame() {
   game.boardSnapshots = [cloneBoard(game.board)];
   game.playerSnapshots = [getPlayersWithMeta(game)];
 
-  console.log("New game started:", allBotNames.join(" vs "));
+  console.log("[" + new Date().toISOString() + "] New game started: " + allBotNames.join(" vs "));
 
   broadcast({
     type: "new_game",
@@ -1033,16 +1042,15 @@ function playNextMove() {
   executeGameMove(game, validMove);
 
   // Repetition detection: track per-player move keys (from-to pairs)
+  // 5 repetitions of the same move = elimination (bots get myMoveHistory to avoid this)
   var moveKey = validMove.from.r + "," + validMove.from.c + "-" + validMove.to.r + "," + validMove.to.c;
   var counts = game.positionCounts[cp];
   counts[moveKey] = (counts[moveKey] || 0) + 1;
-  if (counts[moveKey] >= 3 && game.status === "in_progress") {
-    // Player repeated same move 3 times — eliminate for repetition
-    console.log(botName + " eliminated for repetition (move " + moveKey + " played " + counts[moveKey] + " times)");
+  if (counts[moveKey] >= 5 && game.status === "in_progress") {
+    console.log("[" + new Date().toISOString() + "] " + botName + " eliminated for repetition (move " + moveKey + " played " + counts[moveKey] + " times)");
     eliminatePlayer(game, cp, "repetition");
     var alive = countAlivePlayers(game);
     if (alive <= 1) {
-      // Find last alive
       for (var fi = 0; fi < 4; fi++) {
         if (game.players[fi].status === "alive") { game.winner = fi; break; }
       }
@@ -1081,6 +1089,13 @@ function playNextMove() {
 }
 
 function finishCurrentGame() {
+  // Guard against double calls
+  if (game.gameFinished) {
+    console.log("[" + new Date().toISOString() + "] WARNING: finishCurrentGame called twice, ignoring");
+    return;
+  }
+  game.gameFinished = true;
+
   // Handle move limit
   if (game.status === "in_progress") {
     game.status = "finished";
@@ -1096,7 +1111,8 @@ function finishCurrentGame() {
   }
 
   var winnerName = game.players[game.winner] ? game.players[game.winner].name : "Unknown";
-  console.log("Game finished: " + winnerName + " wins (" + game.winReason + ", " + game.turnNumber + " moves)");
+  var playerSummary = game.players.map(function(p, i) { return p.name + "(" + p.color + "):" + p.score + "pts/" + p.status; }).join(", ");
+  console.log("[" + new Date().toISOString() + "] Game finished: " + winnerName + " wins (" + game.winReason + ", " + game.turnNumber + " moves) | " + playerSummary);
 
   // Build replay-ready move history with board snapshots
   var replayMoves = [];

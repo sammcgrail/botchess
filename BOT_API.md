@@ -45,6 +45,11 @@ function decideMove(state) {
 | `state.legalMoves` | `Array` | All legal moves for your pieces |
 | `state.turnNumber` | `number` | Current turn (increments each move) |
 | `state.lastMove` | `object\|null` | Previous move: `{player, from, to, piece, captured, promotion}` |
+| `state.myMoveHistory` | `Array` | All moves you've made this game: `[{from, to, piece, captured, promotion}]` |
+
+### Repetition Rule
+
+If a bot plays the exact same move (same from→to squares) **5 times** in a single game, that bot is **eliminated for repetition**. Use `state.myMoveHistory` to track your past moves and avoid repeating them.
 
 ### Board Cell Format
 
