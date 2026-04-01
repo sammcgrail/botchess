@@ -400,49 +400,45 @@ h1 {
 .past-game-meta { color: #9a9080; font-size: 0.8em; }
 .no-games { color: #9a9080; font-style: italic; font-size: 0.85em; }
 
-/* Bot code viewer */
-.code-viewer {
-  display: none;
-  background: #2a2622;
-  border-radius: 8px;
-  padding: 12px;
-  margin-top: 8px;
-  border: 1px solid #3a3530;
-}
-.code-viewer h2 {
-  font-size: 1em;
+/* Bot code inline expand */
+.bot-code-expand {
+  background: #1e1c1a;
+  border-radius: 0 0 6px 6px;
+  padding: 8px;
+  margin-top: -4px;
   margin-bottom: 8px;
-  border-bottom: 1px solid #3a3530;
-  padding-bottom: 4px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  color: #d4a040;
+  border: 1px solid #3a3530;
+  border-top: none;
 }
-.code-viewer pre {
-  background: #1a1816;
-  padding: 10px;
-  border-radius: 6px;
-  overflow-x: auto;
-  font-family: monospace;
+.bot-version-bar {
+  margin-bottom: 6px;
+}
+.bot-version-sel {
+  font-family: Georgia, serif;
   font-size: 0.78em;
-  color: #c0b8a8;
-  max-height: 400px;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  user-select: text;
-  -webkit-user-select: text;
-}
-.code-viewer .close-btn {
-  font-family: 'Georgia', serif;
-  font-size: 0.8em;
-  padding: 2px 8px;
+  padding: 2px 6px;
   border-radius: 4px;
   border: 1px solid #3a3530;
   background: #1a1816;
   color: #e8e0d4;
   cursor: pointer;
+  width: 100%;
+}
+.bot-code-pre {
+  background: #141210;
+  padding: 8px;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-family: monospace;
+  font-size: 0.72em;
+  color: #c0b8a8;
+  max-height: 300px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  user-select: text;
+  -webkit-user-select: text;
+  margin: 0;
 }
 
 /* Animations */
@@ -510,7 +506,7 @@ h1 {
         <div class="board-grid" id="boardGrid"></div>
       </div>
       <div class="replay-controls" id="replayControls">
-        <h2>Replay &mdash; <span id="replayTitle">Game</span></h2>
+        <h2>Replay &mdash; <span id="replayTitle">Game</span> <button onclick="closeReplay()" style="font-family:Georgia,serif;font-size:0.8em;padding:2px 8px;border-radius:4px;border:1px solid #3a3530;background:#1a1816;color:#e8e0d4;cursor:pointer;margin-left:auto;">&#10005; Back to Live</button></h2>
         <div class="replay-bar">
           <button onclick="replayStep(-1)" title="Previous move">&#9664;&#9664;</button>
           <button id="replayPlayBtn" onclick="replayToggle()" title="Play/Pause">&#9654;</button>
@@ -547,8 +543,7 @@ h1 {
       <div class="panel" id="botsPanel">
         <h2>Bots</h2>
         <div id="botsList"><span class="no-games">Loading bots...</span></div>
-        <button class="autobattle-btn" id="autobattleBtn" onclick="runAutobattle()">Run Autobattle</button>
-        <div id="autobattleMsg"></div>
+        <div id="autobattleMsg" style="font-size:0.85em;color:#9a9080;text-align:center;">Games run continuously</div>
       </div>
 
       <div class="panel" id="historyPanel">
@@ -558,17 +553,7 @@ h1 {
         </div>
       </div>
 
-      <div class="code-viewer" id="codeViewer">
-        <h2>
-          <span id="codeViewerTitle">Bot Code</span>
-          <span style="display:flex;align-items:center;gap:6px;">
-            <select id="botVersionSelect" style="display:none;font-family:Georgia,serif;font-size:0.8em;padding:2px 6px;border-radius:4px;border:1px solid #3a3530;background:#1a1816;color:#e8e0d4;cursor:pointer;max-width:200px;"><option value="current">current</option></select>
-            <button id="botTestBtn" style="display:none;font-family:Georgia,serif;font-size:0.8em;padding:2px 8px;border-radius:4px;border:1px solid #60a060;background:#1a3a1a;color:#60c060;cursor:pointer;">Test in Autobattle</button>
-            <button class="close-btn" onclick="closeCodeViewer()">Close</button>
-          </span>
-        </h2>
-        <pre id="codeViewerContent"></pre>
-      </div>
+      <!-- Bot code shown inline in bots panel -->
     </div>
   </div>
 </div>
@@ -754,7 +739,14 @@ function renderBotsList(bots) {
     var bot = bots[i];
     html += '<div class="bot-list-item">';
     html += '<span class="bot-name">' + escHtml(bot.name) + '</span>';
-    html += '<button onclick="viewBotCode(\'' + escAttr(bot.name) + '\')">View Code</button>';
+    html += '<span style="display:flex;gap:4px;align-items:center;">';
+    if (bot.versions > 0) html += '<span style="color:#9a9080;font-size:0.75em;">v' + bot.versions + '</span>';
+    html += '<button onclick="toggleBotCode(\'' + escAttr(bot.name) + '\', this)">&#9660; Code</button>';
+    html += '</span>';
+    html += '</div>';
+    html += '<div class="bot-code-expand" id="botExpand_' + escAttr(bot.name) + '" style="display:none;">';
+    html += '<div class="bot-version-bar"><select class="bot-version-sel" id="botVerSel_' + escAttr(bot.name) + '"><option value="current">current</option></select></div>';
+    html += '<pre class="bot-code-pre" id="botCodePre_' + escAttr(bot.name) + '">Loading...</pre>';
     html += '</div>';
   }
   container.innerHTML = html;
@@ -789,17 +781,17 @@ function fetchState() {
   fetch(apiBase() + "/api/state")
     .then(function(r) { return r.json(); })
     .then(function(data) {
+      if (!data) {
+        updateStatusBar("idle");
+        return;
+      }
       state = data;
-      if (data.board) renderBoard(data.board);
+      if (data.board) {
+        lastMoveFrom = data.lastMove ? data.lastMove.from : null;
+        lastMoveTo = data.lastMove ? data.lastMove.to : null;
+        renderBoard(data.board);
+      }
       if (data.players) renderPlayerCards(data.players);
-      if (data.lastMove) {
-        lastMoveFrom = data.lastMove.from;
-        lastMoveTo = data.lastMove.to;
-        if (data.board) renderBoard(data.board);
-      }
-      if (data.moveNotation) {
-        document.getElementById("moveDisplay").textContent = data.moveNotation;
-      }
       updateStatusBar(data.status || "idle");
     })
     .catch(function(err) {
@@ -901,28 +893,32 @@ function runAutobattle() {
     });
 }
 
-var currentViewBot = null;
-function viewBotCode(botName) {
-  currentViewBot = botName;
-  var viewer = document.getElementById("codeViewer");
-  var title = document.getElementById("codeViewerTitle");
-  var content = document.getElementById("codeViewerContent");
-  var sel = document.getElementById("botVersionSelect");
-  var testBtn = document.getElementById("botTestBtn");
-  title.textContent = botName;
-  content.textContent = "Loading...";
-  viewer.style.display = "block";
-  sel.style.display = "none";
-  testBtn.style.display = "none";
+function toggleBotCode(botName, btn) {
+  var expand = document.getElementById("botExpand_" + botName);
+  if (!expand) return;
+
+  if (expand.style.display === "block") {
+    expand.style.display = "none";
+    btn.innerHTML = "&#9660; Code";
+    return;
+  }
+
+  expand.style.display = "block";
+  btn.innerHTML = "&#9650; Code";
+
+  var pre = document.getElementById("botCodePre_" + botName);
+  var sel = document.getElementById("botVerSel_" + botName);
+
+  pre.textContent = "Loading...";
 
   // Fetch current code
   fetch(apiBase() + "/api/bot/" + encodeURIComponent(botName))
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      content.textContent = data.code || "// No code available";
+      pre.textContent = data.code || "// No code available";
     })
     .catch(function(err) {
-      content.textContent = "// Error loading code: " + err.message;
+      pre.textContent = "// Error: " + err.message;
     });
 
   // Fetch versions
@@ -930,72 +926,24 @@ function viewBotCode(botName) {
     .then(function(r) { return r.json(); })
     .then(function(data) {
       var versions = data.versions || [];
-      if (versions.length > 0) {
-        sel.innerHTML = '<option value="current">current</option>';
-        for (var i = 0; i < versions.length; i++) {
-          var v = versions[i];
-          var d = new Date(v.date).toLocaleString();
-          sel.innerHTML += '<option value="' + escAttr(v.version) + '">' + d + '</option>';
-        }
-        sel.style.display = "inline-block";
-        testBtn.style.display = "inline-block";
-        sel.onchange = function() {
-          if (sel.value === "current") {
-            fetch(apiBase() + "/api/bot/" + encodeURIComponent(botName))
-              .then(function(r) { return r.json(); })
-              .then(function(d) { content.textContent = d.code || "// No code"; });
-          } else {
-            fetch(apiBase() + "/api/bot/" + encodeURIComponent(botName) + "/version/" + encodeURIComponent(sel.value))
-              .then(function(r) { return r.json(); })
-              .then(function(d) { content.textContent = d.code || "// No code"; });
-          }
-        };
-        testBtn.onclick = function() {
-          if (!currentViewBot) return;
-          testBtn.disabled = true;
-          testBtn.textContent = "Running...";
-          var overrides = {};
-          if (sel.value !== "current") {
-            // Get the version code and run autobattle with override
-            fetch(apiBase() + "/api/bot/" + encodeURIComponent(botName) + "/version/" + encodeURIComponent(sel.value))
-              .then(function(r) { return r.json(); })
-              .then(function(d) {
-                overrides[botName] = d.code;
-                return fetch(apiBase() + "/api/autobattle", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({overrides: overrides}) });
-              })
-              .then(function(r) { return r.json(); })
-              .then(function(d) {
-                testBtn.disabled = false;
-                testBtn.textContent = "Test in Autobattle";
-                var msg = document.getElementById("autobattleMsg");
-                msg.textContent = d.winner + " wins! (" + d.reason + ", " + d.totalMoves + " moves)";
-                msg.style.display = "block";
-                fetchPastGames(true);
-                fetchLeaderboard();
-              })
-              .catch(function(e) { testBtn.disabled = false; testBtn.textContent = "Test in Autobattle"; });
-          } else {
-            fetch(apiBase() + "/api/autobattle", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({}) })
-              .then(function(r) { return r.json(); })
-              .then(function(d) {
-                testBtn.disabled = false;
-                testBtn.textContent = "Test in Autobattle";
-                var msg = document.getElementById("autobattleMsg");
-                msg.textContent = d.winner + " wins! (" + d.reason + ", " + d.totalMoves + " moves)";
-                msg.style.display = "block";
-                fetchPastGames(true);
-                fetchLeaderboard();
-              })
-              .catch(function(e) { testBtn.disabled = false; testBtn.textContent = "Test in Autobattle"; });
-          }
-        };
+      sel.innerHTML = '<option value="current">current</option>';
+      for (var i = 0; i < versions.length; i++) {
+        var v = versions[i];
+        var d = new Date(v.date).toLocaleString();
+        sel.innerHTML += '<option value="' + escAttr(v.version) + '">' + d + '</option>';
       }
+      sel.onchange = function() {
+        if (sel.value === "current") {
+          fetch(apiBase() + "/api/bot/" + encodeURIComponent(botName))
+            .then(function(r) { return r.json(); })
+            .then(function(d) { pre.textContent = d.code || "// No code"; });
+        } else {
+          fetch(apiBase() + "/api/bot/" + encodeURIComponent(botName) + "/version/" + encodeURIComponent(sel.value))
+            .then(function(r) { return r.json(); })
+            .then(function(d) { pre.textContent = d.code || "// No code"; });
+        }
+      };
     });
-}
-
-function closeCodeViewer() {
-  document.getElementById("codeViewer").style.display = "none";
-  currentViewBot = null;
 }
 
 function fetchPastGames(reset) {
@@ -1011,16 +959,17 @@ function fetchPastGames(reset) {
     .then(function(r) { return r.json(); })
     .then(function(data) {
       historyLoading = false;
-      if (!data || data.length === 0) {
+      var games = Array.isArray(data) ? data : (data && data.games ? data.games : []);
+      if (games.length === 0) {
         historyDone = true;
         if (historyOffset === 0) {
           renderPastGames([], false);
         }
         return;
       }
-      renderPastGames(data, historyOffset > 0);
-      historyOffset += data.length;
-      if (data.length < 10) historyDone = true;
+      renderPastGames(games, historyOffset > 0);
+      historyOffset += games.length;
+      if (games.length < 10) historyDone = true;
     })
     .catch(function(err) {
       historyLoading = false;
@@ -1163,6 +1112,19 @@ function replaySeek(event) {
   replayRenderFrame();
 }
 
+function closeReplay() {
+  replayData = null;
+  replayIndex = 0;
+  replayPlaying = false;
+  if (replayTimer) { clearInterval(replayTimer); replayTimer = null; }
+  document.getElementById("replayControls").style.display = "none";
+  // Remove active class from past game rows
+  var rows = document.querySelectorAll(".past-game-row");
+  rows.forEach(function(row) { row.classList.remove("active"); });
+  // Restore live game view
+  fetchState();
+}
+
 // Status bar
 function updateStatusBar(status) {
   var bar = document.getElementById("statusBar");
@@ -1192,36 +1154,43 @@ function connectWS() {
   ws.onmessage = function(event) {
     try {
       var msg = JSON.parse(event.data);
-      if (msg.type === "move") {
+      if (msg.type === "state" || msg.type === "new_game") {
+        // Full state update (on connect or new game start)
+        if (replayData) return; // Don't override replay view
+        if (msg.board) {
+          lastMoveFrom = msg.lastMove ? msg.lastMove.from : null;
+          lastMoveTo = msg.lastMove ? msg.lastMove.to : null;
+          renderBoard(msg.board);
+        }
+        if (msg.players) renderPlayerCards(msg.players);
+        updateStatusBar(msg.status || "in_progress");
+        if (msg.type === "new_game") {
+          document.getElementById("moveDisplay").textContent = "New game starting...";
+        }
+      } else if (msg.type === "move") {
+        if (replayData) return; // Don't override replay view
         lastMoveFrom = msg.from || null;
         lastMoveTo = msg.to || null;
         if (msg.board) renderBoard(msg.board);
         if (msg.players) renderPlayerCards(msg.players);
         if (msg.notation) {
-          document.getElementById("moveDisplay").textContent = msg.notation;
+          document.getElementById("moveDisplay").textContent = "Move " + (msg.turnNumber || "") + ": " + msg.notation;
         }
-      } else if (msg.type === "state") {
-        state = msg;
-        if (msg.board) renderBoard(msg.board);
-        if (msg.players) renderPlayerCards(msg.players);
-        updateStatusBar(msg.status || "idle");
-      } else if (msg.type === "gameOver") {
+        updateStatusBar(msg.status || "in_progress");
+      } else if (msg.type === "game_over") {
+        if (replayData) {
+          // Still refresh history/leaderboard
+          fetchLeaderboard();
+          fetchPastGames(true);
+          return;
+        }
         updateStatusBar("finished");
         if (msg.winner) {
-          document.getElementById("moveDisplay").textContent = "Game over! Winner: " + msg.winner;
+          document.getElementById("moveDisplay").textContent = "Game over! " + msg.winner + " wins (" + (msg.reason || "") + ")";
         }
+        if (msg.players) renderPlayerCards(msg.players);
         fetchLeaderboard();
         fetchPastGames(true);
-      } else if (msg.type === "autobattleProgress") {
-        var msgEl = document.getElementById("autobattleMsg");
-        msgEl.style.display = "block";
-        msgEl.textContent = msg.message || "Running...";
-        msgEl.style.color = "#d4a040";
-        if (msg.board) renderBoard(msg.board);
-        if (msg.players) renderPlayerCards(msg.players);
-        if (msg.notation) {
-          document.getElementById("moveDisplay").textContent = msg.notation;
-        }
       }
     } catch (e) {
       console.error("WS parse error:", e);

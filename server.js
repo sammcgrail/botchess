@@ -712,7 +712,17 @@ server.on("upgrade", function(request, socket, head) {
 
 wss.on("connection", function(ws) {
   if (game) {
-    ws.send(JSON.stringify({ type: "state", state: getPublicState(game) }));
+    ws.send(JSON.stringify({
+      type: "state",
+      board: game.board,
+      players: getPlayersWithMeta ? getPlayersWithMeta(game) : game.players,
+      currentPlayer: game.currentPlayer,
+      turnNumber: game.turnNumber,
+      lastMove: game.lastMove,
+      status: game.status,
+      winner: game.winner,
+      winReason: game.winReason
+    }));
   }
 });
 
@@ -800,17 +810,18 @@ app.get("/api/history", function(req, res) {
   } catch (e) { rows = []; }
   var summary = rows.map(function(r) {
     var g = JSON.parse(r.data);
+    var winnerPlayer = g.players && g.players[g.winner];
     return {
       id: g.id,
-      date: g.date,
+      date: g.date ? new Date(g.date).toLocaleString() : "",
       players: g.players,
-      winner: g.winner,
-      winner_name: g.winner_name,
+      winner: g.winner_name || (winnerPlayer ? winnerPlayer.name : "Unknown"),
+      winnerColor: winnerPlayer ? winnerPlayer.color : "red",
       reason: g.reason,
-      totalMoves: g.totalMoves || 0
+      moves: g.totalMoves || 0
     };
   });
-  res.json({ games: summary, total: total, hasMore: offset + limit < total });
+  res.json(summary);
 });
 
 app.get("/api/history/:id", function(req, res) {
@@ -823,8 +834,244 @@ app.get("/api/leaderboard", function(req, res) {
   res.json(loadLeaderboard());
 });
 
-// --- Autobattle ---
+// --- Continuous Game Loop ---
 
+var MOVE_DELAY_MS = 2000;   // 2 seconds between moves
+var GAME_DELAY_MS = 8000;   // 8 seconds between games
+var gameLoopRunning = false;
+var gameLoopBotCodes = {};   // snapshot of bot codes for current game
+
+function getMoveNotation(move) {
+  if (!move) return "";
+  var cols = "abcdefghijklmn";
+  var piece = move.piece || "";
+  var from = cols[move.from.c] + (14 - move.from.r);
+  var to = cols[move.to.c] + (14 - move.to.r);
+  var cap = move.captured ? "x" : "-";
+  var promo = move.promotion ? "=" + move.promotion : "";
+  return (piece === "P" ? "" : piece) + from + cap + to + promo;
+}
+
+function countPlayerPieces(board, player) {
+  var count = 0;
+  for (var r = 0; r < BOARD_SIZE; r++) {
+    for (var c = 0; c < BOARD_SIZE; c++) {
+      var cell = board[r][c];
+      if (cell && cell.player === player && !cell.dead) count++;
+    }
+  }
+  return count;
+}
+
+function getPlayersWithMeta(g) {
+  return g.players.map(function(p, i) {
+    return {
+      name: p.name,
+      color: p.color,
+      score: p.score,
+      status: p.status,
+      piecesLeft: countPlayerPieces(g.board, i),
+      isCurrentTurn: g.status === "in_progress" && g.currentPlayer === i
+    };
+  });
+}
+
+function startGameLoop() {
+  if (gameLoopRunning) return;
+  gameLoopRunning = true;
+  console.log("Game loop started");
+  startNewGame();
+}
+
+function startNewGame() {
+  // Gather bots
+  var bots = listBots();
+  var botNames = bots.map(function(b) { return b.name; });
+
+  // Shuffle
+  for (var si = botNames.length - 1; si > 0; si--) {
+    var sj = Math.floor(Math.random() * (si + 1));
+    var tmp = botNames[si]; botNames[si] = botNames[sj]; botNames[sj] = tmp;
+  }
+
+  var allBotNames = [];
+  gameLoopBotCodes = {};
+
+  for (var i = 0; i < 4; i++) {
+    if (i < botNames.length) {
+      allBotNames.push(botNames[i]);
+      gameLoopBotCodes[botNames[i]] = getBot(botNames[i]) || DEFAULT_BOT_CODE;
+    } else {
+      var rname = "RandomBot_" + (i + 1);
+      allBotNames.push(rname);
+      gameLoopBotCodes[rname] = DEFAULT_BOT_CODE;
+    }
+  }
+
+  game = createGame(allBotNames);
+  // Store initial board snapshot for replay
+  game.boardSnapshots = [cloneBoard(game.board)];
+  game.playerSnapshots = [getPlayersWithMeta(game)];
+
+  console.log("New game started:", allBotNames.join(" vs "));
+
+  broadcast({
+    type: "new_game",
+    board: game.board,
+    players: getPlayersWithMeta(game),
+    status: "in_progress"
+  });
+
+  // Schedule first move
+  setTimeout(playNextMove, MOVE_DELAY_MS);
+}
+
+function playNextMove() {
+  if (!game || game.status !== "in_progress") return;
+
+  var cp = game.currentPlayer;
+
+  // Skip dead players
+  if (game.players[cp].status !== "alive") {
+    game.currentPlayer = getNextAlivePlayer(game, cp);
+    if (game.currentPlayer === -1) {
+      finishCurrentGame();
+      return;
+    }
+    setTimeout(playNextMove, 100);
+    return;
+  }
+
+  var botState = buildBotState(game, cp);
+
+  if (botState.legalMoves.length === 0) {
+    game.currentPlayer = getNextAlivePlayer(game, cp);
+    if (game.currentPlayer === -1) {
+      finishCurrentGame();
+      return;
+    }
+    setTimeout(playNextMove, 100);
+    return;
+  }
+
+  // Run bot with 3-attempt invalid move policy
+  var botName = game.players[cp].name;
+  var validMove = null;
+  for (var attempt = 0; attempt < 3; attempt++) {
+    var botMove = runBot(botName, botState, gameLoopBotCodes[botName]);
+    validMove = validateBotMove(botMove, botState.legalMoves);
+    if (validMove) break;
+    console.log(botName + " invalid move (attempt " + (attempt + 1) + "/3):", JSON.stringify(botMove));
+  }
+
+  if (!validMove) {
+    console.log(botName + " failed 3 times — random fallback");
+    var idx = Math.floor(Math.random() * botState.legalMoves.length);
+    validMove = botState.legalMoves[idx];
+  }
+
+  executeGameMove(game, validMove);
+
+  // Store board snapshot for replay
+  game.boardSnapshots.push(cloneBoard(game.board));
+  game.playerSnapshots.push(getPlayersWithMeta(game));
+
+  var notation = getMoveNotation(game.lastMove);
+  var playersWithMeta = getPlayersWithMeta(game);
+
+  // Broadcast the move
+  broadcast({
+    type: "move",
+    board: game.board,
+    players: playersWithMeta,
+    from: game.lastMove.from,
+    to: game.lastMove.to,
+    notation: notation,
+    turnNumber: game.turnNumber,
+    status: game.status
+  });
+
+  // Check if game is over
+  if (game.status === "finished") {
+    finishCurrentGame();
+    return;
+  }
+
+  // Schedule next move
+  setTimeout(playNextMove, MOVE_DELAY_MS);
+}
+
+function finishCurrentGame() {
+  // Handle move limit
+  if (game.status === "in_progress") {
+    game.status = "finished";
+    var maxScore = -1, maxPlayer = 0;
+    for (var i = 0; i < 4; i++) {
+      if (game.players[i].score > maxScore) {
+        maxScore = game.players[i].score;
+        maxPlayer = i;
+      }
+    }
+    game.winner = maxPlayer;
+    game.winReason = "move_limit";
+  }
+
+  var winnerName = game.players[game.winner] ? game.players[game.winner].name : "Unknown";
+  console.log("Game finished: " + winnerName + " wins (" + game.winReason + ", " + game.turnNumber + " moves)");
+
+  // Build replay-ready move history with board snapshots
+  var replayMoves = [];
+  for (var i = 0; i < game.moveHistory.length; i++) {
+    var m = game.moveHistory[i];
+    replayMoves.push({
+      player: m.player,
+      piece: m.piece,
+      from: m.from,
+      to: m.to,
+      captured: m.captured,
+      promotion: m.promotion,
+      notation: getMoveNotation(m),
+      board: game.boardSnapshots[i + 1],
+      players: game.playerSnapshots[i + 1]
+    });
+  }
+
+  // Save to DB
+  var entry = {
+    id: uuid(),
+    date: new Date().toISOString(),
+    players: game.players.map(function(p, i) {
+      return { name: p.name, color: p.color, score: p.score, status: p.status };
+    }),
+    winner: game.winner,
+    winner_name: winnerName,
+    reason: game.winReason,
+    totalMoves: game.turnNumber,
+    initialBoard: game.boardSnapshots[0],
+    moves: replayMoves
+  };
+
+  try {
+    db.prepare("INSERT INTO games (id, date, data) VALUES (?, ?, ?)").run(entry.id, entry.date, JSON.stringify(entry));
+    db.prepare("DELETE FROM games WHERE id NOT IN (SELECT id FROM games ORDER BY date DESC LIMIT ?)").run(MAX_HISTORY);
+  } catch (e) { console.error("Failed to save game:", e.message); }
+
+  updateLeaderboard(game.players, game.winner);
+
+  broadcast({
+    type: "game_over",
+    winner: winnerName,
+    winner_index: game.winner,
+    reason: game.winReason,
+    players: getPlayersWithMeta(game),
+    game_id: entry.id
+  });
+
+  // Start next game after delay
+  setTimeout(startNewGame, GAME_DELAY_MS);
+}
+
+// Manual autobattle endpoint (runs instantly, no delays — for testing)
 app.post("/api/autobattle", function(req, res) {
   var botNames = req.body.bots;
   var overrides = req.body.overrides || {};
@@ -833,31 +1080,25 @@ app.post("/api/autobattle", function(req, res) {
     botNames = listBots().map(function(b) { return b.name; });
   }
 
-  // Need 4 bots — fill with default random bot if fewer
   var allBotNames = [];
   var allBotCodes = [];
 
   if (botNames.length === 0) {
-    // All defaults
     for (var i = 0; i < 4; i++) {
       allBotNames.push("RandomBot_" + (i + 1));
       allBotCodes.push(DEFAULT_BOT_CODE);
     }
   } else {
-    // Verify named bots exist
     for (var i = 0; i < botNames.length; i++) {
       if (!overrides[botNames[i]] && !getBot(botNames[i])) {
         return res.status(400).json({ error: "Bot not found: " + botNames[i] });
       }
     }
-
-    // Shuffle bot order
     var shuffled = botNames.slice();
     for (var si = shuffled.length - 1; si > 0; si--) {
       var sj = Math.floor(Math.random() * (si + 1));
       var tmp = shuffled[si]; shuffled[si] = shuffled[sj]; shuffled[sj] = tmp;
     }
-
     for (var i = 0; i < 4; i++) {
       if (i < shuffled.length) {
         allBotNames.push(shuffled[i]);
@@ -869,10 +1110,7 @@ app.post("/api/autobattle", function(req, res) {
     }
   }
 
-  // Create isolated game
   var g = createGame(allBotNames);
-
-  // Run the game
   var moveCount = 0;
   while (g.status === "in_progress" && moveCount < MAX_MOVES) {
     var cp = g.currentPlayer;
@@ -881,46 +1119,25 @@ app.post("/api/autobattle", function(req, res) {
       if (g.currentPlayer === -1) break;
       continue;
     }
-
     var botState = buildBotState(g, cp);
-
     if (botState.legalMoves.length === 0) {
-      // No legal moves — should have been caught by checkmate/stalemate detection
-      // But just in case, skip this player
       g.currentPlayer = getNextAlivePlayer(g, cp);
       continue;
     }
-
-    // Give bot up to 3 attempts for a valid move
     var validMove = null;
-    var invalidCount = 0;
     for (var attempt = 0; attempt < 3; attempt++) {
       var botMove = runBot(allBotNames[cp], botState, allBotCodes[cp]);
       validMove = validateBotMove(botMove, botState.legalMoves);
       if (validMove) break;
-      invalidCount++;
-      console.log(allBotNames[cp] + " made invalid move (attempt " + (attempt + 1) + "/3):", JSON.stringify(botMove));
     }
-
     if (!validMove) {
-      // 3 invalid moves — pick random legal move as fallback
-      console.log(allBotNames[cp] + " failed 3 times — using random move");
       var idx = Math.floor(Math.random() * botState.legalMoves.length);
       validMove = botState.legalMoves[idx];
     }
-
     executeGameMove(g, validMove);
     moveCount++;
-
-    // Broadcast move update
-    broadcast({
-      type: "move",
-      state: getPublicState(g),
-      move: g.lastMove
-    });
   }
 
-  // Handle edge case: ran out of moves without natural game end
   if (g.status === "in_progress") {
     g.status = "finished";
     var maxScore = -1, maxPlayer = 0;
@@ -934,7 +1151,6 @@ app.post("/api/autobattle", function(req, res) {
     g.winReason = "move_limit";
   }
 
-  // Save to DB
   var entry = {
     id: uuid(),
     date: new Date().toISOString(),
@@ -945,7 +1161,6 @@ app.post("/api/autobattle", function(req, res) {
     winner_name: g.players[g.winner].name,
     reason: g.winReason,
     totalMoves: g.turnNumber,
-    is_autobattle: true,
     moves: g.moveHistory
   };
 
@@ -955,11 +1170,6 @@ app.post("/api/autobattle", function(req, res) {
   } catch (e) { console.error("Failed to save autobattle:", e.message); }
 
   updateLeaderboard(g.players, g.winner);
-
-  // Update the live game state for spectators
-  game = g;
-
-  broadcast({ type: "autobattle_complete", game_id: entry.id, winner: entry.winner_name, reason: entry.reason });
 
   res.json({
     game_id: entry.id,
@@ -975,4 +1185,6 @@ app.post("/api/autobattle", function(req, res) {
 
 server.listen(PORT, function() {
   console.log("BotChess 4-player server running on port " + PORT);
+  // Start the continuous game loop
+  setTimeout(startGameLoop, 2000);
 });
