@@ -819,7 +819,7 @@ function fetchLeaderboard() {
 }
 
 function fetchBots() {
-  fetch(apiBase() + "/api/bots")
+  fetch(apiBase() + "/api/bots?_=" + Date.now())
     .then(function(r) { return r.json(); })
     .then(function(data) {
       renderBotsList(data);
@@ -1191,8 +1191,9 @@ function connectWS() {
         updateStatusBar(msg.status || "in_progress");
       } else if (msg.type === "game_over") {
         if (replayData) {
-          // Still refresh history/leaderboard
+          // Still refresh history/leaderboard/bots
           fetchLeaderboard();
+          fetchBots();
           fetchPastGames(true);
           return;
         }
@@ -1202,6 +1203,7 @@ function connectWS() {
         }
         if (msg.players) renderPlayerCards(msg.players);
         fetchLeaderboard();
+        fetchBots();
         fetchPastGames(true);
       }
     } catch (e) {

@@ -13,7 +13,7 @@ var wss = new WebSocket.Server({ noServer: true });
 
 var PORT = 20007;
 var BOARD_SIZE = 14;
-var MAX_MOVES = 300;
+var MAX_MOVES = 500;
 var BOT_TIMEOUT_MS = 5000;
 var MAX_HISTORY = 50;
 var DB_PATH = process.env.BOTCHESS_DB || path.join(__dirname, "data", "botchess.db");
@@ -772,6 +772,7 @@ app.get("/api/state", function(req, res) {
 });
 
 app.get("/api/bots", function(req, res) {
+  res.set("Cache-Control", "no-cache, no-store");
   var bots = listBots();
   res.json(bots.map(function(b) {
     return { name: b.name, updated: b.updated, size: b.size, versions: b.versions };
