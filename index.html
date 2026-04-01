@@ -149,7 +149,7 @@ h1 {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
+  font-size: 28px;
   position: relative;
   transition: background 0.2s;
   border-radius: 2px;
@@ -170,6 +170,8 @@ h1 {
   z-index: 2;
   text-shadow: 0 1px 2px rgba(0,0,0,0.5);
   pointer-events: none;
+  font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", serif;
+  line-height: 1;
 }
 .piece.red { color: #e07070; }
 .piece.blue { color: #70a0e0; }
@@ -468,7 +470,7 @@ h1 {
   .board-grid {
     grid-template-columns: repeat(14, 24px);
   }
-  .sq { width: 24px; height: 24px; font-size: 15px; }
+  .sq { width: 24px; height: 24px; font-size: 20px; }
   h1 { font-size: 1.5em; }
   .container { padding: 8px; }
   .player-card { padding: 6px; }
@@ -549,17 +551,6 @@ h1 {
         <div id="autobattleMsg"></div>
       </div>
 
-      <div class="panel" id="botUploadPanel">
-        <h2>Upload Bot</h2>
-        <div class="bot-upload">
-          <input type="text" id="botName" placeholder="Bot name">
-          <input type="password" id="botPassword" placeholder="Password">
-          <textarea id="botCode" placeholder="Paste bot code here..."></textarea>
-          <button onclick="uploadBot()">Upload Bot</button>
-          <div class="msg" id="uploadMsg"></div>
-        </div>
-      </div>
-
       <div class="panel" id="historyPanel">
         <h2>Game History</h2>
         <div class="past-games-list" id="pastGamesList">
@@ -570,7 +561,11 @@ h1 {
       <div class="code-viewer" id="codeViewer">
         <h2>
           <span id="codeViewerTitle">Bot Code</span>
-          <button class="close-btn" onclick="closeCodeViewer()">Close</button>
+          <span style="display:flex;align-items:center;gap:6px;">
+            <select id="botVersionSelect" style="display:none;font-family:Georgia,serif;font-size:0.8em;padding:2px 6px;border-radius:4px;border:1px solid #3a3530;background:#1a1816;color:#e8e0d4;cursor:pointer;max-width:200px;"><option value="current">current</option></select>
+            <button id="botTestBtn" style="display:none;font-family:Georgia,serif;font-size:0.8em;padding:2px 8px;border-radius:4px;border:1px solid #60a060;background:#1a3a1a;color:#60c060;cursor:pointer;">Test in Autobattle</button>
+            <button class="close-btn" onclick="closeCodeViewer()">Close</button>
+          </span>
         </h2>
         <pre id="codeViewerContent"></pre>
       </div>
@@ -593,12 +588,12 @@ var DARK_SQ = "#b58863";
 var DEAD_COLOR = "#666";
 
 var PIECE_UNICODE = {
-  K: "\u265A",
-  Q: "\u265B",
-  R: "\u265C",
-  B: "\u265D",
-  N: "\u265E",
-  P: "\u265F"
+  K: "\u265A\uFE0E",
+  Q: "\u265B\uFE0E",
+  R: "\u265C\uFE0E",
+  B: "\u265D\uFE0E",
+  N: "\u265E\uFE0E",
+  P: "\u265F\uFE0E"
 };
 
 var state = null;
@@ -664,19 +659,21 @@ function renderBoard(board) {
     if (existing) existing.remove();
 
     var cell = board[r] ? board[r][c] : null;
-    if (cell && cell.type) {
+    var cellPiece = cell ? (cell.type || cell.piece) : null;
+    if (cell && cellPiece) {
       var piece = document.createElement("span");
       piece.className = "piece";
-      piece.textContent = PIECE_UNICODE[cell.type] || "?";
+      piece.textContent = PIECE_UNICODE[cellPiece] || "?";
       if (cell.dead) {
         piece.classList.add("dead-piece");
-      } else if (cell.player) {
-        piece.classList.add(cell.player);
+      } else {
+        var colorName = typeof cell.player === "number" ? PLAYER_ORDER[cell.player] : cell.player;
+        if (colorName) piece.classList.add(colorName);
       }
       sq.appendChild(piece);
 
       // King in check
-      if (cell.type === "K" && cell.inCheck) {
+      if (cellPiece === "K" && cell.inCheck) {
         sq.classList.add("in-check");
       }
     }
@@ -714,7 +711,10 @@ function renderPlayerCards(players) {
     if (p.captured && p.captured.length > 0) {
       html += '<div class="pc-captured">';
       for (var j = 0; j < p.captured.length; j++) {
-        html += '<span style="color:' + (PLAYER_COLORS[p.captured[j].color] || DEAD_COLOR) + '">' + (PIECE_UNICODE[p.captured[j].type] || "?") + '</span>';
+        var cap = p.captured[j];
+        var capColor = cap.color || (typeof cap.player === "number" ? PLAYER_ORDER[cap.player] : cap.player);
+        var capPiece = cap.type || cap.piece;
+        html += '<span style="color:' + (PLAYER_COLORS[capColor] || DEAD_COLOR) + '">' + (PIECE_UNICODE[capPiece] || "?") + '</span>';
       }
       html += '</div>';
     }
@@ -901,34 +901,101 @@ function runAutobattle() {
     });
 }
 
+var currentViewBot = null;
 function viewBotCode(botName) {
+  currentViewBot = botName;
   var viewer = document.getElementById("codeViewer");
   var title = document.getElementById("codeViewerTitle");
   var content = document.getElementById("codeViewerContent");
-  title.textContent = botName + " — Code";
+  var sel = document.getElementById("botVersionSelect");
+  var testBtn = document.getElementById("botTestBtn");
+  title.textContent = botName;
   content.textContent = "Loading...";
   viewer.style.display = "block";
+  sel.style.display = "none";
+  testBtn.style.display = "none";
 
-  fetch(apiBase() + "/api/bots")
+  // Fetch current code
+  fetch(apiBase() + "/api/bot/" + encodeURIComponent(botName))
     .then(function(r) { return r.json(); })
-    .then(function(bots) {
-      var found = null;
-      for (var i = 0; i < bots.length; i++) {
-        if (bots[i].name === botName) { found = bots[i]; break; }
-      }
-      if (found && found.code) {
-        content.textContent = found.code;
-      } else {
-        content.textContent = "// No code available for this bot";
-      }
+    .then(function(data) {
+      content.textContent = data.code || "// No code available";
     })
     .catch(function(err) {
       content.textContent = "// Error loading code: " + err.message;
+    });
+
+  // Fetch versions
+  fetch(apiBase() + "/api/bot/" + encodeURIComponent(botName) + "/versions")
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var versions = data.versions || [];
+      if (versions.length > 0) {
+        sel.innerHTML = '<option value="current">current</option>';
+        for (var i = 0; i < versions.length; i++) {
+          var v = versions[i];
+          var d = new Date(v.date).toLocaleString();
+          sel.innerHTML += '<option value="' + escAttr(v.version) + '">' + d + '</option>';
+        }
+        sel.style.display = "inline-block";
+        testBtn.style.display = "inline-block";
+        sel.onchange = function() {
+          if (sel.value === "current") {
+            fetch(apiBase() + "/api/bot/" + encodeURIComponent(botName))
+              .then(function(r) { return r.json(); })
+              .then(function(d) { content.textContent = d.code || "// No code"; });
+          } else {
+            fetch(apiBase() + "/api/bot/" + encodeURIComponent(botName) + "/version/" + encodeURIComponent(sel.value))
+              .then(function(r) { return r.json(); })
+              .then(function(d) { content.textContent = d.code || "// No code"; });
+          }
+        };
+        testBtn.onclick = function() {
+          if (!currentViewBot) return;
+          testBtn.disabled = true;
+          testBtn.textContent = "Running...";
+          var overrides = {};
+          if (sel.value !== "current") {
+            // Get the version code and run autobattle with override
+            fetch(apiBase() + "/api/bot/" + encodeURIComponent(botName) + "/version/" + encodeURIComponent(sel.value))
+              .then(function(r) { return r.json(); })
+              .then(function(d) {
+                overrides[botName] = d.code;
+                return fetch(apiBase() + "/api/autobattle", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({overrides: overrides}) });
+              })
+              .then(function(r) { return r.json(); })
+              .then(function(d) {
+                testBtn.disabled = false;
+                testBtn.textContent = "Test in Autobattle";
+                var msg = document.getElementById("autobattleMsg");
+                msg.textContent = d.winner + " wins! (" + d.reason + ", " + d.totalMoves + " moves)";
+                msg.style.display = "block";
+                fetchPastGames(true);
+                fetchLeaderboard();
+              })
+              .catch(function(e) { testBtn.disabled = false; testBtn.textContent = "Test in Autobattle"; });
+          } else {
+            fetch(apiBase() + "/api/autobattle", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({}) })
+              .then(function(r) { return r.json(); })
+              .then(function(d) {
+                testBtn.disabled = false;
+                testBtn.textContent = "Test in Autobattle";
+                var msg = document.getElementById("autobattleMsg");
+                msg.textContent = d.winner + " wins! (" + d.reason + ", " + d.totalMoves + " moves)";
+                msg.style.display = "block";
+                fetchPastGames(true);
+                fetchLeaderboard();
+              })
+              .catch(function(e) { testBtn.disabled = false; testBtn.textContent = "Test in Autobattle"; });
+          }
+        };
+      }
     });
 }
 
 function closeCodeViewer() {
   document.getElementById("codeViewer").style.display = "none";
+  currentViewBot = null;
 }
 
 function fetchPastGames(reset) {
