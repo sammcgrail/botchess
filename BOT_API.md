@@ -20,7 +20,7 @@ Content-Type: application/json
 ```
 
 - Bot name: alphanumeric, hyphens, underscores only
-- Max code size: 50KB
+- Max code size: 200KB
 - Previous versions are saved automatically
 - Re-uploading with the same name updates your bot
 
