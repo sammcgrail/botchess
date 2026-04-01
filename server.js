@@ -419,7 +419,7 @@ function createGame(playerNames) {
         status: "alive" // alive, checkmated, stalemated
       };
     }),
-    currentPlayer: 0,
+    currentPlayer: Math.floor(Math.random() * 4),
     turnNumber: 0,
     moveHistory: [],
     lastMove: null,
