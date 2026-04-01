@@ -794,6 +794,12 @@ function fetchState() {
       }
       if (data.players) renderPlayerCards(data.players);
       updateStatusBar(data.status || "idle");
+      if (data.status === "in_progress") {
+        document.getElementById("moveDisplay").textContent = "Turn " + (data.turnNumber || 0);
+      } else if (data.status === "finished") {
+        var winner = data.winner != null && data.players ? data.players[data.winner] : null;
+        document.getElementById("moveDisplay").textContent = "Game finished" + (winner ? " — " + winner.name + " wins" : "");
+      }
     })
     .catch(function(err) {
       console.error("fetchState error:", err);
