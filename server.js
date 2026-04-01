@@ -689,7 +689,12 @@ function validateBotMove(move, legalMoves) {
     var lm = legalMoves[i];
     if (lm.from.r === move.from.r && lm.from.c === move.from.c &&
         lm.to.r === move.to.r && lm.to.c === move.to.c) {
-      return lm; // Return the legal move (which has promotion info)
+      // If this is a promotion move and bot specified a piece, use it
+      if (lm.promotion && move.promotion && /^[QRBN]$/.test(move.promotion)) {
+        lm = JSON.parse(JSON.stringify(lm));
+        lm.promotion = move.promotion;
+      }
+      return lm;
     }
   }
   return null;
