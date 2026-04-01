@@ -568,6 +568,8 @@ function updateLeaderboard(players, winnerIdx) {
     "ON CONFLICT(name) DO UPDATE SET wins = wins + ?, points = points + ?, games = games + 1, last_win = CASE WHEN ? > 0 THEN ? ELSE last_win END"
   );
   for (var i = 0; i < players.length; i++) {
+    // Skip RandomBots from leaderboard
+    if (/^RandomBot/i.test(players[i].name)) continue;
     var isWinner = (i === winnerIdx) ? 1 : 0;
     upsert.run(
       players[i].name, isWinner, players[i].score, isWinner ? now : null,
