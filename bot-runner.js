@@ -48,10 +48,13 @@ process.stdin.on("end", function() {
     try {
       var fn = getBotFn(code);
       var move = fn(state);
-      if (move && typeof move === "object" && move.from && move.to) return move;
-      return null;
+      var memory = state.memory || {};
+      if (move && typeof move === "object" && move.from && move.to) {
+        return { move: move, memory: memory };
+      }
+      return { move: null, memory: memory };
     } catch (e) {
-      return null;
+      return { move: null, memory: state.memory || {} };
     }
   }
 
@@ -62,7 +65,7 @@ process.stdin.on("end", function() {
     }
     _stdout.write(_JSON.stringify(results));
   } else {
-    var move = runOne(input.code, input.state);
-    _stdout.write(_JSON.stringify(move));
+    var result = runOne(input.code, input.state);
+    _stdout.write(_JSON.stringify(result));
   }
 });
