@@ -467,6 +467,7 @@ h1 {
     grid-template-columns: repeat(14, 24px);
   }
   .sq { width: 24px; height: 24px; font-size: 20px; }
+  .board-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   h1 { font-size: 1.5em; }
   .container { padding: 8px; }
   .player-card { padding: 6px; }
@@ -1222,7 +1223,7 @@ function escHtml(str) {
 }
 
 function escAttr(str) {
-  return str.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+  return str.replace(/&/g, "&amp;").replace(/'/g, "&#39;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 // Init
