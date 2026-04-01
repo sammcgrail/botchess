@@ -418,6 +418,7 @@ function executeMoveSilent(board, move, player) {
 // --- Game State ---
 
 var game = null;
+var botMemory = {};  // per-bot-name persistent memory within a game
 
 function createGame(playerNames) {
   return {
@@ -674,7 +675,7 @@ function saveBot(name, code) {
 // Default bot: random legal move
 var DEFAULT_BOT_CODE = 'function decideMove(state) {\n  if (!state.legalMoves || state.legalMoves.length === 0) return null;\n  var idx = Math.floor(Math.random() * state.legalMoves.length);\n  return state.legalMoves[idx];\n}';
 
-// Run a bot in subprocess
+// Run a bot in subprocess — returns move, updates botMemory
 function runBot(name, gameState, overrideCode) {
   var code = overrideCode || getBot(name) || DEFAULT_BOT_CODE;
   try {
@@ -694,8 +695,16 @@ function runBot(name, gameState, overrideCode) {
       }
     );
     try {
-      var move = JSON.parse(result.toString());
-      if (move && typeof move === "object" && move.from && move.to) return move;
+      var parsed = JSON.parse(result.toString());
+      if (parsed && typeof parsed === "object" && parsed.move && parsed.move.from && parsed.move.to) {
+        // New format: { move, memory }
+        if (parsed.memory && typeof parsed.memory === "object") {
+          botMemory[name] = parsed.memory;
+        }
+        return parsed.move;
+      }
+      // Legacy format or null
+      if (parsed && typeof parsed === "object" && parsed.from && parsed.to) return parsed;
       return null;
     } catch (e) { return null; }
   } catch (e) {
@@ -724,7 +733,8 @@ function buildBotState(g, playerIndex) {
     legalMoves: legalMoves,
     turnNumber: g.turnNumber,
     lastMove: g.lastMove,
-    myMoveHistory: myMoves
+    myMoveHistory: myMoves,
+    memory: botMemory[g.players[playerIndex].name] || {}
   };
 }
 
@@ -969,6 +979,7 @@ function startNewGame() {
 
   var allBotNames = [];
   gameLoopBotCodes = {};
+  botMemory = {};  // reset memory for new game
 
   for (var i = 0; i < 4; i++) {
     if (i < botNames.length) {
@@ -1231,6 +1242,8 @@ app.post("/api/autobattle", function(req, res) {
   autobattleRunning = true;
   var g = createGame(allBotNames);
   var gameId = uuid();
+  var savedMemory = botMemory;
+  botMemory = {};  // fresh memory for autobattle
 
   // Run async — yield event loop between moves
   function runNextMove() {
@@ -1312,6 +1325,7 @@ app.post("/api/autobattle", function(req, res) {
     } catch (e) { console.error("Failed to save autobattle:", e.message); }
     updateLeaderboard(g.players, g.winner);
     autobattleRunning = false;
+    botMemory = savedMemory;  // restore live game memory
 
     // Broadcast result
     broadcast({ type: "game_over", winner: entry.winner_name, reason: entry.reason, players: getPlayersWithMeta(g), game_id: entry.id });
